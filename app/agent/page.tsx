@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { AGENTS } from "@/lib/mock-data";
-import type { ChatRequest, ChatResponse } from "@/app/api/chat/route";
+import { OpenClawWSClient } from "@/lib/openclaw";
+import type { WSFrame } from "@/lib/openclaw";
 import {
   Send, Bot, FileText, Image, FileSpreadsheet,
-  Presentation, Download, Sparkles,
+  Presentation, Download, Sparkles, Wifi, WifiOff,
 } from "lucide-react";
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -39,61 +40,87 @@ function Chat() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
+  const clientRef = useRef<OpenClawWSClient | null>(null);
+  const bottomRef  = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // ── WebSocket lifecycle ──────────────────────────────────────────────────
+  const handleEvent = useCallback((frame: WSFrame) => {
+    if (frame.event === "chat.reply") {
+      const payload = frame.payload as Record<string, unknown> | undefined;
+      const text = (payload?.message as string) ?? (payload?.text as string) ?? JSON.stringify(payload);
+      const reply: Message = {
+        id:    crypto.randomUUID(),
+        role:  "agent",
+        text,
+        agent: agent.name,
+        ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages(prev => [...prev, reply]);
+      setLoading(false);
+    }
+  }, [agent.name]);
+
+  useEffect(() => {
+    const wsUrl   = process.env.NEXT_PUBLIC_OPENCLAW_WS_URL   ?? "ws://localhost:18789";
+    const wsToken = process.env.NEXT_PUBLIC_OPENCLAW_WS_TOKEN ?? "";
+
+    const client = new OpenClawWSClient({
+      wsUrl,
+      wsToken,
+      onEvent: handleEvent,
+      onClose: () => setWsStatus("disconnected"),
+    });
+    clientRef.current = client;
+
+    client.connect()
+      .then(() => setWsStatus("connected"))
+      .catch(() => setWsStatus("disconnected"));
+
+    return () => {
+      client.disconnect();
+      clientRef.current = null;
+    };
+  }, [handleEvent]);
+
+  // ── Send ─────────────────────────────────────────────────────────────────
   const send = async () => {
-    if (!input.trim() || loading) return;
+    const text = input.trim();
+    if (!text || loading || wsStatus !== "connected") return;
+
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id:   crypto.randomUUID(),
       role: "user",
-      text: input.trim(),
-      ts: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+      text,
+      ts:   new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
     };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setLoading(true);
 
     try {
-      const payload: ChatRequest = {
-        message:    userMsg.text,
-        agentId:    agent.id,
-        sessionKey: `webchat:${agent.id}`,
-      };
-      const res = await fetch("/api/chat", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(payload),
-      });
-      const data: ChatResponse = await res.json();
-      const reply: Message = {
-        id:    (Date.now() + 1).toString(),
-        role:  "agent",
-        text:  data.reply,
-        agent: agent.name,
-        ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-      };
-      setMessages(prev => [...prev, reply]);
+      await clientRef.current!.sendMessage(text, { agentId: agent.id });
+      // Reply will arrive via onEvent callback above
     } catch {
       const errMsg: Message = {
-        id:    (Date.now() + 1).toString(),
+        id:    crypto.randomUUID(),
         role:  "agent",
-        text:  "⚠️ Unable to reach the agent. Check that the OpenClaw gateway is running.",
+        text:  "⚠️ Unable to send message. Check your connection.",
         agent: agent.name,
         ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages(prev => [...prev, errMsg]);
-    } finally {
       setLoading(false);
     }
   };
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] lg:h-[620px]">
-      {/* Agent selector */}
+      {/* Agent selector + WS status */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-xs text-slate-500 font-medium">Agent:</span>
         {AGENTS.slice(0, 6).map(a => (
@@ -107,6 +134,14 @@ function Chat() {
             }`}
           >{a.name}</button>
         ))}
+        <span className="ml-auto flex items-center gap-1.5 text-xs">
+          {wsStatus === "connected"
+            ? <><Wifi size={12} className="text-emerald-400" /><span className="text-emerald-400">Live</span></>
+            : wsStatus === "connecting"
+            ? <><span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /><span className="text-amber-400">Connecting…</span></>
+            : <><WifiOff size={12} className="text-red-400" /><span className="text-red-400">Disconnected</span></>
+          }
+        </span>
       </div>
 
       {/* Messages */}
@@ -149,13 +184,15 @@ function Chat() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
-          placeholder={`Message ${agent.name}…`}
+          placeholder={wsStatus === "connected" ? `Message ${agent.name}…` : "Connecting to agent…"}
+          disabled={wsStatus !== "connected"}
           className="flex-1 text-sm bg-navy-900/70 border border-navy-700 rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-600
-            focus:outline-none focus:border-arc-cyan/60 focus:shadow-[0_0_0_3px_rgba(0,212,255,0.15)] transition-all"
+            focus:outline-none focus:border-arc-cyan/60 focus:shadow-[0_0_0_3px_rgba(0,212,255,0.15)] transition-all
+            disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           onClick={send}
-          disabled={loading || !input.trim()}
+          disabled={loading || !input.trim() || wsStatus !== "connected"}
           className="bg-arc-cyan/20 hover:bg-arc-cyan/30 disabled:opacity-40 disabled:cursor-not-allowed
             text-arc-cyan border border-arc-cyan/50 hover:border-arc-cyan hover:shadow-glow-cyan
             rounded-xl px-4 py-2.5 transition-all duration-200"

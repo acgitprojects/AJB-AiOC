@@ -46,11 +46,13 @@
   },
 
   "hooks": {
+    "_comment": "hooks.token is SEPARATE from gateway.auth.token — use OPENCLAW_HOOKS_TOKEN env var",
+    "token": "change-me-hooks-token",
+    "allowRequestSessionKey": false,
     "webchat": {
       "agentId": "hooks",
-      "sessionKey": "webchat:ops-centre",
       "deliver": false,
-      "timeoutSeconds": 60
+      "wakeMode": "now"
     },
     "wake": {
       "mode": "now"

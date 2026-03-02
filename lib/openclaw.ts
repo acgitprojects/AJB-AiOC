@@ -1,25 +1,34 @@
 /**
  * lib/openclaw.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Typed client for the OpenClaw gateway.
+ * Typed client for the OpenClaw gateway (protocol v3).
  *
  * Supports two integration patterns:
- *  A) HTTP Webhooks  → sendToAgent(), wakeAgent()   (simple, stateless)
+ *  A) HTTP Webhooks  → sendToAgent(), wakeAgent()   (fire-and-forget, async)
  *  B) WebSocket      → OpenClawWSClient              (real-time streaming)
  *
- * Docs: https://github.com/openclaw/openclaw
+ * Key protocol facts (v2026.3.1+):
+ *  • POST /hooks/agent returns 202 {ok, runId} — reply arrives via WS event
+ *  • Health endpoint is GET /healthz (not GET /)
+ *  • WS auth uses params.auth.token (not params.token)
+ *  • WS handshake requires minProtocol/maxProtocol: 3
+ *  • chat.send requires an idempotencyKey
+ *  • sessionKey in HTTP payload is rejected unless hooks.allowRequestSessionKey: true
+ *  • Two separate tokens: gateway.auth.token (WS) ≠ hooks.token (HTTP)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 export const OPENCLAW_CONFIG = {
-  gatewayUrl:        process.env.OPENCLAW_GATEWAY_URL       ?? "http://localhost:18789",
-  wsUrl:             process.env.OPENCLAW_WS_URL             ?? "ws://localhost:18789",
-  token:             process.env.OPENCLAW_TOKEN              ?? "",
-  defaultAgentId:    process.env.OPENCLAW_DEFAULT_AGENT_ID  ?? "hooks",
-  sessionPrefix:     process.env.OPENCLAW_SESSION_PREFIX    ?? "webchat",
-  timeoutSeconds:    Number(process.env.OPENCLAW_TIMEOUT_SECONDS ?? "60"),
+  gatewayUrl:      process.env.OPENCLAW_GATEWAY_URL      ?? "http://localhost:18789",
+  wsUrl:           process.env.OPENCLAW_WS_URL            ?? "ws://localhost:18789",
+  /** Token used for HTTP hooks endpoints (openclaw.json → hooks.token) */
+  hooksToken:      process.env.OPENCLAW_HOOKS_TOKEN       ?? "",
+  /** Token used for WebSocket authentication (openclaw.json → gateway.auth.token) */
+  wsToken:         process.env.OPENCLAW_WS_TOKEN          ?? "",
+  defaultAgentId:  process.env.OPENCLAW_DEFAULT_AGENT_ID ?? "hooks",
+  sessionPrefix:   process.env.OPENCLAW_SESSION_PREFIX   ?? "webchat",
 } as const;
 
 // ─── HTTP Types ───────────────────────────────────────────────────────────────
@@ -32,8 +41,6 @@ export interface HookAgentPayload {
   name?: string;
   /** Route to a specific agent (falls back to default). */
   agentId?: string;
-  /** Custom session key for conversation threading. */
-  sessionKey?: string;
   /** If true, send the agent reply to a channel. */
   deliver?: boolean;
   /** Which channel to reply on, e.g. "last", "telegram", "whatsapp". */
@@ -44,17 +51,19 @@ export interface HookAgentPayload {
   model?: string;
   /** Reasoning effort: "low" | "medium" | "high". */
   thinking?: "low" | "medium" | "high";
-  /** Max seconds to wait for an agent reply. */
-  timeoutSeconds?: number;
+  /** When to wake the agent: "now" runs immediately; "next-heartbeat" queues. */
+  wakeMode?: "now" | "next-heartbeat";
 }
 
-/** Response from POST /hooks/agent */
+/**
+ * Response from POST /hooks/agent.
+ * The gateway responds 202 immediately — the agent runs async.
+ * There is NO inline reply. Replies arrive as WebSocket event frames.
+ */
 export interface HookAgentResponse {
   ok: boolean;
-  reply?: string;
-  sessionKey?: string;
-  agentId?: string;
-  elapsedMs?: number;
+  /** Opaque run identifier for correlating events. */
+  runId?: string;
   error?: string;
 }
 
@@ -70,7 +79,7 @@ export interface HookWakeResponse {
   error?: string;
 }
 
-/** Status response from GET / */
+/** Status response from GET /healthz */
 export interface GatewayStatusResponse {
   ok: boolean;
   version?: string;
@@ -81,18 +90,23 @@ export interface GatewayStatusResponse {
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
-function authHeader(): HeadersInit {
+function hooksAuthHeader(): HeadersInit {
   return {
     "Content-Type": "application/json",
-    ...(OPENCLAW_CONFIG.token
-      ? { Authorization: `Bearer ${OPENCLAW_CONFIG.token}` }
+    ...(OPENCLAW_CONFIG.hooksToken
+      ? { Authorization: `Bearer ${OPENCLAW_CONFIG.hooksToken}` }
       : {}),
   };
 }
 
 /**
- * Send a message to the OpenClaw agent via POST /hooks/agent.
- * Returns the agent's reply text (or throws on error).
+ * Fire a message to the OpenClaw agent via POST /hooks/agent.
+ *
+ * Returns 202 immediately with {ok, runId}.
+ * The agent response arrives asynchronously via a WebSocket "chat.reply" event.
+ *
+ * NOTE: sessionKey is intentionally excluded — sending it to the server without
+ * hooks.allowRequestSessionKey: true in openclaw.json causes a 400 error.
  */
 export async function sendToAgent(
   message: string,
@@ -100,18 +114,16 @@ export async function sendToAgent(
 ): Promise<HookAgentResponse> {
   const payload: HookAgentPayload = {
     message,
-    agentId:        opts.agentId       ?? OPENCLAW_CONFIG.defaultAgentId,
-    sessionKey:     opts.sessionKey    ?? `${OPENCLAW_CONFIG.sessionPrefix}:ops-centre`,
-    timeoutSeconds: opts.timeoutSeconds ?? OPENCLAW_CONFIG.timeoutSeconds,
-    name:           opts.name          ?? "WebChat",
+    agentId:  opts.agentId  ?? OPENCLAW_CONFIG.defaultAgentId,
+    name:     opts.name     ?? "WebChat",
+    wakeMode: opts.wakeMode ?? "now",
     ...opts,
   };
 
   const res = await fetch(`${OPENCLAW_CONFIG.gatewayUrl}/hooks/agent`, {
     method:  "POST",
-    headers: authHeader(),
+    headers: hooksAuthHeader(),
     body:    JSON.stringify(payload),
-    // Server-side Next.js: disable keep-alive caching for streaming
     cache:   "no-store",
   });
 
@@ -120,6 +132,7 @@ export async function sendToAgent(
     return { ok: false, error: `Gateway ${res.status}: ${body}` };
   }
 
+  // 202 Accepted — {ok: true, runId: "..."}
   return res.json() as Promise<HookAgentResponse>;
 }
 
@@ -132,7 +145,7 @@ export async function wakeAgent(
 ): Promise<HookWakeResponse> {
   const res = await fetch(`${OPENCLAW_CONFIG.gatewayUrl}/hooks/wake`, {
     method:  "POST",
-    headers: authHeader(),
+    headers: hooksAuthHeader(),
     body:    JSON.stringify({ text, mode } satisfies HookWakePayload),
     cache:   "no-store",
   });
@@ -146,16 +159,15 @@ export async function wakeAgent(
 }
 
 /**
- * Check the gateway health via GET /.
+ * Check the gateway health via GET /healthz.
  * Returns ok:false (with an error message) if the gateway is unreachable.
  */
 export async function getGatewayStatus(): Promise<GatewayStatusResponse> {
   try {
-    const res = await fetch(`${OPENCLAW_CONFIG.gatewayUrl}/`, {
+    const res = await fetch(`${OPENCLAW_CONFIG.gatewayUrl}/healthz`, {
       method:  "GET",
-      headers: authHeader(),
+      headers: hooksAuthHeader(),
       cache:   "no-store",
-      // 3-second timeout so the UI doesn't hang
       signal:  AbortSignal.timeout(3000),
     });
 
@@ -173,18 +185,18 @@ export async function getGatewayStatus(): Promise<GatewayStatusResponse> {
 
 // ─── WebSocket Client ─────────────────────────────────────────────────────────
 
-/** JSON frame types used by the OpenClaw gateway WS protocol. */
+/** JSON frame types used by the OpenClaw gateway WS protocol v3. */
 export type WSFrameType = "req" | "res" | "event";
 
 export interface WSFrame {
-  type: WSFrameType;
-  id?: string;
-  method?: string;
-  params?: unknown;
-  ok?: boolean;
+  type:     WSFrameType;
+  id?:      string;
+  method?:  string;
+  params?:  unknown;
+  ok?:      boolean;
   payload?: unknown;
-  event?: string;
-  seq?: number;
+  event?:   string;
+  seq?:     number;
 }
 
 export type WSEventHandler = (frame: WSFrame) => void;
@@ -192,13 +204,13 @@ export type WSEventHandler = (frame: WSFrame) => void;
 /**
  * OpenClawWSClient
  * ─────────────────────────────────────────────────────────────────────────────
- * A lightweight WebSocket wrapper for the OpenClaw gateway.
+ * Browser-side WebSocket client for the OpenClaw gateway (protocol v3).
  *
- * Usage (browser / edge runtime):
- *
+ * Usage:
  *   const client = new OpenClawWSClient({ onEvent: (frame) => { … } });
  *   await client.connect();
- *   await client.send("Hello Jary");
+ *   const { runId } = await client.sendMessage("Hello");
+ *   // reply arrives via onEvent with frame.event === "chat.reply"
  *   client.disconnect();
  *
  * ─────────────────────────────────────────────────────────────────────────────
@@ -207,34 +219,63 @@ export class OpenClawWSClient {
   private ws: WebSocket | null = null;
   private pendingRequests = new Map<string, (frame: WSFrame) => void>();
   private onEvent: WSEventHandler;
+  private onClose?: () => void;
   private requestCounter = 0;
+  private _connected = false;
+  private readonly wsUrl: string;
+  private readonly wsToken: string;
 
-  constructor(opts: { onEvent?: WSEventHandler } = {}) {
-    this.onEvent = opts.onEvent ?? (() => {});
+  constructor(opts: {
+    onEvent?: WSEventHandler;
+    onClose?: () => void;
+    /** Override the WS URL (useful in browser components with NEXT_PUBLIC_ var). */
+    wsUrl?: string;
+    /** Override the WS token (useful in browser components with NEXT_PUBLIC_ var). */
+    wsToken?: string;
+  } = {}) {
+    this.onEvent  = opts.onEvent  ?? (() => {});
+    this.onClose  = opts.onClose;
+    this.wsUrl    = opts.wsUrl    ?? OPENCLAW_CONFIG.wsUrl;
+    this.wsToken  = opts.wsToken  ?? OPENCLAW_CONFIG.wsToken;
   }
 
-  /** Opens the WebSocket and authenticates with the gateway. */
+  get connected(): boolean {
+    return this._connected;
+  }
+
+  /**
+   * Opens the WebSocket and performs the protocol v3 authentication handshake.
+   * Rejects if auth fails or the socket closes before auth completes.
+   */
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const wsUrl  = OPENCLAW_CONFIG.wsUrl;
-      const token  = OPENCLAW_CONFIG.token;
+      const wsUrl = this.wsUrl;
+      const token = this.wsToken;
 
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        // Send the connect/auth handshake
+        // Protocol v3 handshake: auth token must be inside params.auth.token,
+        // and minProtocol/maxProtocol must both be set to 3.
         this.sendRaw({
           type:   "req",
           id:     "connect-handshake",
           method: "connect",
           params: {
-            token,
+            minProtocol: 3,
+            maxProtocol: 3,
+            auth: { token },
             client: {
               id:       "ops-centre-webchat",
               version:  "1.0.0",
               platform: "web",
               mode:     "webchat",
             },
+            role:        "operator",
+            scopes:      [],
+            caps:        [],
+            commands:    [],
+            permissions: {},
           },
         });
       };
@@ -248,8 +289,12 @@ export class OpenClawWSClient {
         }
 
         if (frame.type === "res" && frame.id === "connect-handshake") {
-          if (frame.ok) resolve();
-          else reject(new Error("OpenClaw auth failed"));
+          if (frame.ok) {
+            this._connected = true;
+            resolve();
+          } else {
+            reject(new Error("OpenClaw WS auth failed"));
+          }
           return;
         }
 
@@ -268,20 +313,29 @@ export class OpenClawWSClient {
       };
 
       this.ws.onerror = (e) => reject(e);
+
       this.ws.onclose = () => {
-        // Reject any pending requests that were in-flight
+        this._connected = false;
         this.pendingRequests.forEach((r) =>
           r({ type: "res", ok: false, payload: { error: "WebSocket closed" } })
         );
         this.pendingRequests.clear();
+        this.onClose?.();
       };
     });
   }
 
-  /** Send a message to the agent via the WS gateway. */
+  /**
+   * Send a message to the agent over WebSocket.
+   * Returns immediately with {ok, runId} (equivalent to 202).
+   * The agent reply arrives as an onEvent frame where frame.event === "chat.reply".
+   *
+   * Each call generates a fresh idempotencyKey to prevent duplicate delivery
+   * on reconnect scenarios.
+   */
   sendMessage(
     message: string,
-    opts: Pick<HookAgentPayload, "agentId" | "sessionKey" | "model"> = {}
+    opts: Pick<HookAgentPayload, "agentId" | "model"> & { sessionKey?: string } = {}
   ): Promise<WSFrame> {
     const id = String(++this.requestCounter);
     return new Promise((resolve) => {
@@ -292,9 +346,10 @@ export class OpenClawWSClient {
         method: "chat.send",
         params: {
           message,
-          agentId:    opts.agentId    ?? OPENCLAW_CONFIG.defaultAgentId,
-          sessionKey: opts.sessionKey ?? `${OPENCLAW_CONFIG.sessionPrefix}:ops-centre`,
-          model:      opts.model,
+          agentId:        opts.agentId    ?? OPENCLAW_CONFIG.defaultAgentId,
+          sessionKey:     opts.sessionKey ?? `${OPENCLAW_CONFIG.sessionPrefix}:ops-centre`,
+          model:          opts.model,
+          idempotencyKey: crypto.randomUUID(),
         },
       });
     });
@@ -302,6 +357,7 @@ export class OpenClawWSClient {
 
   /** Close the WebSocket connection. */
   disconnect() {
+    this._connected = false;
     this.ws?.close();
     this.ws = null;
   }
