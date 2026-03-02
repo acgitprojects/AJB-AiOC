@@ -1,0 +1,75 @@
+{
+  "_comment": "OpenClaw gateway configuration for AJB Operations Centre. See https://github.com/openclaw/openclaw",
+
+  "gateway": {
+    "port": 18789,
+    "bind": "127.0.0.1",
+    "auth": {
+      "mode": "token",
+      "token": "change-me-before-running"
+    },
+    "remote": {
+      "url": "",
+      "token": ""
+    }
+  },
+
+  "session": {
+    "mainKey": "default"
+  },
+
+  "web": {
+    "enabled": true,
+    "heartbeatSeconds": 60,
+    "reconnect": {
+      "initialMs": 2000,
+      "maxMs": 120000
+    }
+  },
+
+  "channels": {
+    "telegram": {
+      "token": "",
+      "webhookUrl": "",
+      "webhookSecret": ""
+    },
+    "discord": {
+      "token": ""
+    },
+    "slack": {
+      "botToken": "",
+      "signingSecret": ""
+    },
+    "whatsapp": {
+      "allowFrom": []
+    }
+  },
+
+  "hooks": {
+    "webchat": {
+      "agentId": "hooks",
+      "sessionKey": "webchat:ops-centre",
+      "deliver": false,
+      "timeoutSeconds": 60
+    },
+    "wake": {
+      "mode": "now"
+    }
+  },
+
+  "dmPolicy": "allowlist",
+
+  "_agents": {
+    "_comment": "Agent IDs should match the agent ids in lib/mock-data.ts",
+    "jary":   { "model": "openai/gpt-4o",        "role": "Executive Assistant" },
+    "aria":   { "model": "anthropic/claude-sonnet-4-5", "role": "Strategic Intelligence" },
+    "alex":   { "model": "openai/gpt-4o",        "role": "Sales & BD" },
+    "maya":   { "model": "openai/gpt-4o",        "role": "Marketing & Content" },
+    "jordan": { "model": "openai/gpt-4o",        "role": "Operations & Projects" },
+    "morgan": { "model": "openai/o3-mini",        "role": "Finance & Compliance" },
+    "riley":  { "model": "openai/gpt-4o",        "role": "Customer Success" },
+    "casey":  { "model": "openai/o3-mini",        "role": "Engineering & DevOps" },
+    "drew":   { "model": "anthropic/claude-sonnet-4-5", "role": "Research & Data" },
+    "sophia": { "model": "openai/gpt-4o",        "role": "HR & Culture" }
+  }
+}

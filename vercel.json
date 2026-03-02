@@ -1,0 +1,14 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "env": {
+    "OPENCLAW_GATEWAY_URL": "@openclaw_gateway_url",
+    "OPENCLAW_WS_URL": "@openclaw_ws_url",
+    "OPENCLAW_TOKEN": "@openclaw_token",
+    "OPENCLAW_DEFAULT_AGENT_ID": "@openclaw_default_agent_id",
+    "OPENCLAW_SESSION_PREFIX": "@openclaw_session_prefix",
+    "OPENCLAW_TIMEOUT_SECONDS": "@openclaw_timeout_seconds"
+  }
+}

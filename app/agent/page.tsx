@@ -1,15 +1,30 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { AGENTS, MOCK_RESPONSES } from "@/lib/mock-data";
+import { AGENTS } from "@/lib/mock-data";
+import type { ChatRequest, ChatResponse } from "@/app/api/chat/route";
 import {
   Send, Bot, FileText, Image, FileSpreadsheet,
-  Presentation, Download, Loader2, Sparkles,
+  Presentation, Download, Sparkles,
 } from "lucide-react";
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 type Message = { id: string; role: "user" | "agent"; text: string; agent?: string; ts: string };
+
+function TypingDots() {
+  return (
+    <div className="flex items-center gap-1 px-3 py-2.5">
+      {[0, 1, 2].map(i => (
+        <span
+          key={i}
+          className="w-2 h-2 rounded-full bg-arc-cyan animate-pulse"
+          style={{ animationDelay: `${i * 150}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
 
 function Chat() {
   const [agent, setAgent] = useState(AGENTS[0]);
@@ -30,7 +45,7 @@ function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const send = () => {
+  const send = async () => {
     if (!input.trim() || loading) return;
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -42,26 +57,42 @@ function Chat() {
     setInput("");
     setLoading(true);
 
-    setTimeout(() => {
-      const lower = userMsg.text.toLowerCase();
-      const key = lower.includes("ajc") ? "ajc"
-        : lower.includes("digest") ? "digest"
-        : lower.includes("help") ? "help"
-        : "default";
+    try {
+      const payload: ChatRequest = {
+        message:    userMsg.text,
+        agentId:    agent.id,
+        sessionKey: `webchat:${agent.id}`,
+      };
+      const res = await fetch("/api/chat", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      });
+      const data: ChatResponse = await res.json();
       const reply: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "agent",
-        text: MOCK_RESPONSES[key],
+        id:    (Date.now() + 1).toString(),
+        role:  "agent",
+        text:  data.reply,
         agent: agent.name,
-        ts: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+        ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages(prev => [...prev, reply]);
+    } catch {
+      const errMsg: Message = {
+        id:    (Date.now() + 1).toString(),
+        role:  "agent",
+        text:  "⚠️ Unable to reach the agent. Check that the OpenClaw gateway is running.",
+        agent: agent.name,
+        ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages(prev => [...prev, errMsg]);
+    } finally {
       setLoading(false);
-    }, 900 + Math.random() * 600);
+    }
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-160px)] lg:h-[600px]">
+    <div className="flex flex-col h-[calc(100vh-200px)] lg:h-[620px]">
       {/* Agent selector */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-xs text-slate-500 font-medium">Agent:</span>
@@ -69,60 +100,65 @@ function Chat() {
           <button
             key={a.id}
             onClick={() => setAgent(a)}
-            className={`px-3 py-1 text-xs rounded-full font-medium border transition-colors ${
+            className={`px-3 py-1 text-xs rounded-full font-medium border transition-all duration-200 ${
               agent.id === a.id
-                ? "bg-indigo-600 text-white border-indigo-600"
-                : "border-slate-200 text-slate-600 hover:border-indigo-300"
+                ? "bg-arc-cyan/20 text-arc-cyan border-arc-cyan shadow-[0_0_8px_rgba(0,212,255,0.35)]"
+                : "border-navy-700 text-slate-400 hover:border-arc-cyan/50 hover:text-arc-cyan/80"
             }`}
           >{a.name}</button>
         ))}
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto rounded-xl border border-navy-700 bg-navy-950/60 backdrop-blur-sm p-4 space-y-4">
         {messages.map(m => (
           <div key={m.id} className={`flex gap-2.5 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-            <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold
-              ${m.role === "user" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-700"}`}>
+            <div className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-xs font-bold font-mono-jet
+              ${m.role === "user"
+                ? "bg-violet-600 text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]"
+                : "bg-navy-800 text-arc-cyan border border-arc-cyan/30 shadow-[0_0_8px_rgba(0,212,255,0.2)]"
+              }`}>
               {m.role === "user" ? "AC" : (m.agent || agent.name).slice(0, 2).toUpperCase()}
             </div>
-            <div className={`max-w-[75%] ${m.role === "user" ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
-              <div className={`px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${
+            <div className={`max-w-[75%] flex flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}>
+              <div className={`px-3.5 py-2.5 rounded-xl text-sm whitespace-pre-wrap leading-relaxed ${
                 m.role === "user"
-                  ? "bg-indigo-600 text-white rounded-tr-sm"
-                  : "bg-slate-100 text-slate-800 rounded-tl-sm"
+                  ? "bg-violet-600/80 text-white rounded-tr-sm shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                  : "bg-navy-800/80 text-slate-200 rounded-tl-sm border border-navy-700/60"
               }`}>{m.text}</div>
-              <span className="text-xs text-slate-400">{m.ts}</span>
+              <span className="text-xs text-slate-600">{m.ts}</span>
             </div>
           </div>
         ))}
         {loading && (
           <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-700">
+            <div className="w-8 h-8 rounded-lg bg-navy-800 border border-arc-cyan/30 flex items-center justify-center text-xs font-bold font-mono-jet text-arc-cyan shadow-[0_0_8px_rgba(0,212,255,0.2)]">
               {agent.name.slice(0, 2).toUpperCase()}
             </div>
-            <div className="px-3 py-2 rounded-xl bg-slate-100 flex items-center gap-1">
-              <Loader2 size={14} className="animate-spin text-slate-400" />
-              <span className="text-xs text-slate-400">Thinking…</span>
+            <div className="bg-navy-800/80 border border-navy-700/60 rounded-xl rounded-tl-sm">
+              <TypingDots />
             </div>
           </div>
         )}
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
+      {/* Input row */}
       <div className="mt-3 flex gap-2">
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
           placeholder={`Message ${agent.name}…`}
-          className="flex-1 text-sm border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+          className="flex-1 text-sm bg-navy-900/70 border border-navy-700 rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-600
+            focus:outline-none focus:border-arc-cyan/60 focus:shadow-[0_0_0_3px_rgba(0,212,255,0.15)] transition-all"
         />
         <button
           onClick={send}
           disabled={loading || !input.trim()}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl px-4 py-2.5 transition-colors"
+          className="bg-arc-cyan/20 hover:bg-arc-cyan/30 disabled:opacity-40 disabled:cursor-not-allowed
+            text-arc-cyan border border-arc-cyan/50 hover:border-arc-cyan hover:shadow-glow-cyan
+            rounded-xl px-4 py-2.5 transition-all duration-200"
         >
           <Send size={16} />
         </button>
@@ -134,9 +170,9 @@ function Chat() {
 // ── Create Document ───────────────────────────────────────────────────────────
 
 const DOC_TYPES = [
-  { key: "word",  label: "Word Document",  icon: FileText,        ext: ".docx", color: "bg-blue-100 text-blue-600" },
-  { key: "excel", label: "Spreadsheet",    icon: FileSpreadsheet, ext: ".xlsx", color: "bg-emerald-100 text-emerald-600" },
-  { key: "ppt",   label: "Presentation",   icon: Presentation,    ext: ".pptx", color: "bg-orange-100 text-orange-600" },
+  { key: "word",  label: "Word Doc",     icon: FileText,        ext: ".docx", color: "bg-blue-500/20 text-blue-400",    border: "border-blue-500/50" },
+  { key: "excel", label: "Spreadsheet",  icon: FileSpreadsheet, ext: ".xlsx", color: "bg-emerald-500/20 text-emerald-400", border: "border-emerald-500/50" },
+  { key: "ppt",   label: "Presentation", icon: Presentation,    ext: ".pptx", color: "bg-orange-500/20 text-orange-400", border: "border-orange-500/50" },
 ];
 
 function CreateDocument() {
@@ -156,20 +192,20 @@ function CreateDocument() {
   };
 
   return (
-    <div className="space-y-5 max-w-2xl">
+    <div className="space-y-6 max-w-2xl">
       {/* Type selector */}
       <div>
-        <p className="text-xs text-slate-500 font-medium mb-2">Document Type</p>
+        <p className="text-xs text-slate-500 font-medium mb-3 uppercase tracking-widest">Document Type</p>
         <div className="flex gap-3 flex-wrap">
           {DOC_TYPES.map(dt => (
             <button
               key={dt.key}
               onClick={() => setDocType(dt)}
-              className={`flex items-center gap-2 px-4 py-3 rounded-xl border-2 transition-colors text-sm font-medium ${
-                docType.key === dt.key
-                  ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                  : "border-slate-200 text-slate-600 hover:border-slate-300 bg-white"
-              }`}
+              className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border-2 transition-all duration-200 text-sm font-medium
+                ${docType.key === dt.key
+                  ? `${dt.border} ${dt.color} shadow-[0_0_12px_rgba(0,212,255,0.15)]`
+                  : "border-navy-700 text-slate-400 hover:border-navy-600 bg-navy-900/40"
+                }`}
             >
               <span className={`p-1.5 rounded-lg ${dt.color}`}>
                 <dt.icon size={16} />
@@ -182,29 +218,36 @@ function CreateDocument() {
 
       {/* Prompt */}
       <div>
-        <p className="text-xs text-slate-500 font-medium mb-2">What should the agent create?</p>
+        <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-widest">What should the agent create?</p>
         <textarea
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
           rows={4}
           placeholder={`e.g. "Monthly finance report for March 2026 with P&L, cashflow, and invoice aging sections"`}
-          className="w-full text-sm border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+          className="w-full text-sm bg-navy-900/70 border border-navy-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-600 resize-none
+            focus:outline-none focus:border-arc-cyan/60 focus:shadow-[0_0_0_3px_rgba(0,212,255,0.15)] transition-all"
         />
       </div>
 
       <button
         onClick={generate}
         disabled={generating || !prompt.trim()}
-        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
+        className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all duration-200
+          ${generating || !prompt.trim()
+            ? "bg-navy-800 text-slate-600 cursor-not-allowed border border-navy-700"
+            : "bg-arc-cyan/20 text-arc-cyan border border-arc-cyan/50 hover:bg-arc-cyan/30 hover:shadow-glow-cyan"
+          }`}
       >
-        {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-        {generating ? "Generating…" : `Generate ${docType.label}`}
+        {generating
+          ? <><span className="w-4 h-4 border-2 border-arc-cyan/40 border-t-arc-cyan rounded-full animate-spin" /> Generating…</>
+          : <><Sparkles size={16} /> Generate {docType.label}</>
+        }
       </button>
 
       {result && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-          <pre className="text-xs text-slate-700 whitespace-pre-wrap font-mono">{result}</pre>
-          <button className="mt-3 flex items-center gap-2 text-xs text-indigo-600 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-50 transition-colors">
+        <div className="glass rounded-xl p-4 border-arc-cyan/20 animate-fade-in">
+          <pre className="text-xs text-arc-cyan/80 whitespace-pre-wrap font-mono-jet">{result}</pre>
+          <button className="mt-3 flex items-center gap-2 text-xs text-arc-cyan border border-arc-cyan/30 rounded-lg px-3 py-1.5 hover:bg-arc-cyan/10 transition-colors">
             <Download size={13} /> Download (placeholder)
           </button>
         </div>
@@ -231,45 +274,43 @@ function CreateImage() {
     setMockUrl(null);
     setTimeout(() => {
       const dim = size.includes("landscape") ? "800x450" : size.includes("portrait") ? "450x800" : "600x600";
-      setMockUrl(`https://placehold.co/${dim}/4f46e5/ffffff?text=Mock+Output`);
+      setMockUrl(`https://placehold.co/${dim}/0a1e35/00d4ff?text=Mock+Output`);
       setGenerating(false);
     }, 2000);
   };
 
+  const chipCls = (active: boolean) =>
+    `px-3 py-1 text-xs rounded-full border font-medium transition-all duration-200 ${
+      active
+        ? "bg-violet-500/20 text-violet-300 border-violet-500/60 shadow-[0_0_8px_rgba(167,139,250,0.3)]"
+        : "border-navy-700 text-slate-400 hover:border-violet-500/40 hover:text-violet-300/70"
+    }`;
+
   return (
-    <div className="space-y-5 max-w-2xl">
+    <div className="space-y-6 max-w-2xl">
       <div>
-        <p className="text-xs text-slate-500 font-medium mb-2">Image Prompt</p>
+        <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-widest">Image Prompt</p>
         <textarea
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
           rows={3}
           placeholder={`e.g. "Professional hero image for AJC landing page — modern AI assistant, clean blue tones"`}
-          className="w-full text-sm border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+          className="w-full text-sm bg-navy-900/70 border border-navy-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-600 resize-none
+            focus:outline-none focus:border-arc-cyan/60 focus:shadow-[0_0_0_3px_rgba(0,212,255,0.15)] transition-all"
         />
       </div>
 
-      <div className="flex flex-wrap gap-4">
+      <div className="flex flex-wrap gap-6">
         <div>
-          <p className="text-xs text-slate-500 font-medium mb-2">Style</p>
+          <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-widest">Style</p>
           <div className="flex flex-wrap gap-2">
-            {IMAGE_STYLES.map(s => (
-              <button key={s} onClick={() => setStyle(s)}
-                className={`px-3 py-1 text-xs rounded-full border font-medium transition-colors ${
-                  style === s ? "bg-indigo-600 text-white border-indigo-600" : "border-slate-200 text-slate-600 hover:border-indigo-300"
-                }`}>{s}</button>
-            ))}
+            {IMAGE_STYLES.map(s => <button key={s} onClick={() => setStyle(s)} className={chipCls(style === s)}>{s}</button>)}
           </div>
         </div>
         <div>
-          <p className="text-xs text-slate-500 font-medium mb-2">Size</p>
+          <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-widest">Size</p>
           <div className="flex flex-wrap gap-2">
-            {IMAGE_SIZES.map(s => (
-              <button key={s} onClick={() => setSize(s)}
-                className={`px-3 py-1 text-xs rounded-full border font-medium transition-colors ${
-                  size === s ? "bg-indigo-600 text-white border-indigo-600" : "border-slate-200 text-slate-600 hover:border-indigo-300"
-                }`}>{s}</button>
-            ))}
+            {IMAGE_SIZES.map(s => <button key={s} onClick={() => setSize(s)} className={chipCls(size === s)}>{s}</button>)}
           </div>
         </div>
       </div>
@@ -277,25 +318,31 @@ function CreateImage() {
       <button
         onClick={generate}
         disabled={generating || !prompt.trim()}
-        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
+        className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all duration-200
+          ${generating || !prompt.trim()
+            ? "bg-navy-800 text-slate-600 cursor-not-allowed border border-navy-700"
+            : "bg-violet-500/20 text-violet-300 border border-violet-500/50 hover:bg-violet-500/30 hover:shadow-[0_0_12px_rgba(167,139,250,0.4)]"
+          }`}
       >
-        {generating ? <Loader2 size={16} className="animate-spin" /> : <Image size={16} />}
-        {generating ? "Generating…" : "Generate Image"}
+        {generating
+          ? <><span className="w-4 h-4 border-2 border-violet-400/40 border-t-violet-400 rounded-full animate-spin" /> Generating…</>
+          : <><Image size={16} /> Generate Image</>
+        }
       </button>
 
       {generating && (
-        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl h-48 flex items-center justify-center">
-          <div className="text-center text-slate-400">
-            <Loader2 size={28} className="animate-spin mx-auto mb-2" />
+        <div className="border border-dashed border-navy-700 rounded-xl h-48 flex items-center justify-center">
+          <div className="text-center text-slate-500">
+            <span className="block w-8 h-8 border-2 border-arc-cyan/40 border-t-arc-cyan rounded-full animate-spin mx-auto mb-3" />
             <p className="text-xs">Generating image…</p>
           </div>
         </div>
       )}
       {mockUrl && (
-        <div className="space-y-2">
-          <img src={mockUrl} alt="Mock output" className="rounded-xl border border-slate-200 w-full max-h-80 object-contain bg-slate-50" />
-          <p className="text-xs text-slate-400">Mock output — prompt: "{prompt}" · {style} · {size}</p>
-          <button className="flex items-center gap-2 text-xs text-indigo-600 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-50 transition-colors">
+        <div className="space-y-2 animate-fade-in">
+          <img src={mockUrl} alt="Mock output" className="rounded-xl border border-navy-700 w-full max-h-80 object-contain bg-navy-950" />
+          <p className="text-xs text-slate-600">Mock output — prompt: "{prompt}" · {style} · {size}</p>
+          <button className="flex items-center gap-2 text-xs text-violet-300 border border-violet-500/30 rounded-lg px-3 py-1.5 hover:bg-violet-500/10 transition-colors">
             <Download size={13} /> Download (placeholder)
           </button>
         </div>
@@ -317,20 +364,24 @@ export default function AgentPage() {
 
   return (
     <div className="p-4 lg:p-6 max-w-screen-xl mx-auto">
+      {/* Header */}
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-slate-800">Agent</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Chat, generate documents and images</p>
+        <h1 className="text-xl font-bold text-white tracking-tight">
+          Agent <span className="text-arc-cyan">Console</span>
+        </h1>
+        <p className="text-sm text-slate-500 mt-0.5">Chat with agents · generate documents and images</p>
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200 mb-6">
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-navy-800 mb-6">
         {TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all duration-200 ${
               tab === t.key
-                ? "text-indigo-600 border-indigo-600"
-                : "text-slate-500 border-transparent hover:text-slate-700"
+                ? "text-arc-cyan border-arc-cyan drop-shadow-[0_0_6px_rgba(0,212,255,0.7)]"
+                : "text-slate-500 border-transparent hover:text-slate-300"
             }`}
           >
             <t.icon size={15} />

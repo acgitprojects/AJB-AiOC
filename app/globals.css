@@ -1,13 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  html { font-family: 'Inter', system-ui, sans-serif; }
-  body { @apply bg-slate-50 text-slate-800; }
+:root {
+  --navy-950:  #020a14;
+  --navy-900:  #040d18;
+  --navy-800:  #071623;
+  --navy-700:  #0a1e35;
+  --glow-cyan: rgba(0,212,255,0.22);
+  --arc-cyan:  #00d4ff;
+  --arc-violet:#8b5cf6;
+  --arc-green: #10d6a0;
 }
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    color-scheme: dark;
+    font-size: 17px;
+  }
+  body {
+    background-color: var(--navy-900);
+    color: #cbd5e1;
+    min-height: 100vh;
+  }
+  * { box-sizing: border-box; }
+}
+
+/* ── Thin custom scrollbar ─────────────────────────── */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.25); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,212,255,0.5); }
 
 @layer utilities {
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  /* Background grid overlay */
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(0,212,255,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.035) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Glass card */
+  .glass {
+    background: rgba(7,22,35,0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0,212,255,0.10);
+  }
+  .glass-hover {
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .glass-hover:hover {
+    border-color: rgba(0,212,255,0.30);
+    box-shadow: 0 0 18px rgba(0,212,255,0.12);
+  }
+
+  /* Hexagon clip */
+  .hex-clip {
+    clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+  }
+
+  /* Glow text */
+  .text-glow-cyan   { text-shadow: 0 0 12px rgba(0,212,255,0.6); }
+  .text-glow-violet { text-shadow: 0 0 12px rgba(139,92,246,0.6); }
+
+  /* Mono util */
+  .font-mono-jet { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+  /* Fade-in */
+  .animate-fade-in { animation: fadeIn 0.25s ease-out both; }
+
+  /* Status dot pulse */
+  .dot-online  { background:#10d6a0; box-shadow:0 0 6px rgba(16,214,160,0.7); }
+  .dot-idle    { background:#f59e0b; box-shadow:0 0 6px rgba(245,158,11,0.7); }
+  .dot-offline { background:#475569; }
+}
+
+@keyframes fadeIn {
+  from { opacity:0; transform:translateY(6px); }
+  to   { opacity:1; transform:translateY(0); }
 }

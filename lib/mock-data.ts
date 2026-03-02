@@ -1,16 +1,31 @@
 // ─── Agents ─────────────────────────────────────────────────────────────────
+// Status and metrics are seeded at 0; live values come from OpenClaw gateway.
 
-export const AGENTS = [
+export type AgentStatus = "online" | "idle" | "offline";
+
+export const AGENTS: Array<{
+  id: string;
+  name: string;
+  role: string;
+  model: string;
+  status: AgentStatus;
+  skills: string[];
+  tasksCompleted: number;
+  responseRate: number;
+  avgResponseMs: number;
+  reports: string[];
+  reportsTo: string | null;
+}> = [
   {
     id: "jary",
     name: "Jary",
     role: "Executive Assistant",
     model: "GPT-4o",
-    status: "online" as const,
+    status: "offline",
     skills: ["scheduling", "comms", "delegation", "telegram"],
-    tasksCompleted: 142,
-    responseRate: 98,
-    avgResponseMs: 1200,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: ["aria", "alex", "maya", "jordan", "morgan", "riley", "casey", "drew", "sophia"],
     reportsTo: null,
   },
@@ -19,11 +34,11 @@ export const AGENTS = [
     name: "ARIA",
     role: "Strategic Intelligence",
     model: "Claude Sonnet",
-    status: "online" as const,
+    status: "offline",
     skills: ["market research", "competitive analysis", "planning"],
-    tasksCompleted: 87,
-    responseRate: 95,
-    avgResponseMs: 2100,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: [],
     reportsTo: "jary",
   },
@@ -32,11 +47,11 @@ export const AGENTS = [
     name: "Alex",
     role: "Sales & BD",
     model: "GPT-4o",
-    status: "online" as const,
+    status: "offline",
     skills: ["CRM", "pipeline", "proposals", "Zoho CRM"],
-    tasksCompleted: 63,
-    responseRate: 92,
-    avgResponseMs: 1800,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: [],
     reportsTo: "jary",
   },
@@ -45,11 +60,11 @@ export const AGENTS = [
     name: "Maya",
     role: "Marketing & Content",
     model: "GPT-4o",
-    status: "online" as const,
+    status: "offline",
     skills: ["copywriting", "social media", "campaigns", "AJC growth"],
-    tasksCompleted: 109,
-    responseRate: 97,
-    avgResponseMs: 1500,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: [],
     reportsTo: "jary",
   },
@@ -58,11 +73,11 @@ export const AGENTS = [
     name: "Jordan",
     role: "Operations & Projects",
     model: "GPT-4o",
-    status: "idle" as const,
+    status: "offline",
     skills: ["Notion", "project tracking", "SOPs", "reporting"],
-    tasksCompleted: 54,
-    responseRate: 88,
-    avgResponseMs: 2400,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: [],
     reportsTo: "jary",
   },
@@ -71,11 +86,11 @@ export const AGENTS = [
     name: "Morgan",
     role: "Finance & Compliance",
     model: "o3-mini",
-    status: "online" as const,
+    status: "offline",
     skills: ["Zoho Books", "invoicing", "cashflow", "tax"],
-    tasksCompleted: 38,
-    responseRate: 99,
-    avgResponseMs: 3200,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: [],
     reportsTo: "jary",
   },
@@ -84,11 +99,11 @@ export const AGENTS = [
     name: "Riley",
     role: "Customer Success",
     model: "GPT-4o",
-    status: "online" as const,
+    status: "offline",
     skills: ["helpdesk", "onboarding", "renewals", "NPS"],
-    tasksCompleted: 76,
-    responseRate: 94,
-    avgResponseMs: 1600,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: [],
     reportsTo: "jary",
   },
@@ -97,11 +112,11 @@ export const AGENTS = [
     name: "Casey",
     role: "Engineering & DevOps",
     model: "o3-mini",
-    status: "idle" as const,
+    status: "offline",
     skills: ["infra", "CI/CD", "BuildOS", "cloud"],
-    tasksCompleted: 45,
-    responseRate: 91,
-    avgResponseMs: 2800,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: [],
     reportsTo: "jary",
   },
@@ -110,11 +125,11 @@ export const AGENTS = [
     name: "Drew",
     role: "Research & Data",
     model: "Claude Sonnet",
-    status: "online" as const,
+    status: "offline",
     skills: ["data analysis", "reporting", "benchmarking"],
-    tasksCompleted: 61,
-    responseRate: 93,
-    avgResponseMs: 2200,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: [],
     reportsTo: "jary",
   },
@@ -123,11 +138,11 @@ export const AGENTS = [
     name: "Sophia",
     role: "HR & Culture",
     model: "GPT-4o",
-    status: "offline" as const,
+    status: "offline",
     skills: ["hiring", "onboarding", "culture", "docs"],
-    tasksCompleted: 29,
-    responseRate: 85,
-    avgResponseMs: 1900,
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
     reports: [],
     reportsTo: "jary",
   },
@@ -136,20 +151,20 @@ export const AGENTS = [
 // ─── Performance chart data ──────────────────────────────────────────────────
 
 export const PERF_WEEKLY = [
-  { day: "Mon", tasks: 18, resolved: 15 },
-  { day: "Tue", tasks: 24, resolved: 22 },
-  { day: "Wed", tasks: 31, resolved: 27 },
-  { day: "Thu", tasks: 20, resolved: 19 },
-  { day: "Fri", tasks: 28, resolved: 25 },
-  { day: "Sat", tasks: 9,  resolved: 9 },
-  { day: "Sun", tasks: 5,  resolved: 5 },
+  { day: "Mon", tasks: 0, resolved: 0 },
+  { day: "Tue", tasks: 0, resolved: 0 },
+  { day: "Wed", tasks: 0, resolved: 0 },
+  { day: "Thu", tasks: 0, resolved: 0 },
+  { day: "Fri", tasks: 0, resolved: 0 },
+  { day: "Sat", tasks: 0, resolved: 0 },
+  { day: "Sun", tasks: 0, resolved: 0 },
 ];
 
 export const PERF_MONTHLY = [
-  { day: "W1", tasks: 82, resolved: 74 },
-  { day: "W2", tasks: 91, resolved: 85 },
-  { day: "W3", tasks: 78, resolved: 70 },
-  { day: "W4", tasks: 104, resolved: 97 },
+  { day: "W1", tasks: 0, resolved: 0 },
+  { day: "W2", tasks: 0, resolved: 0 },
+  { day: "W3", tasks: 0, resolved: 0 },
+  { day: "W4", tasks: 0, resolved: 0 },
 ];
 
 // ─── Calendar tasks ──────────────────────────────────────────────────────────
@@ -162,34 +177,8 @@ export type CalTask = {
   status: "pending" | "in-progress" | "done";
 };
 
-export const CALENDAR_TASKS: Record<string, CalTask[]> = {
-  "2026-03-03": [
-    { id: "t1", agent: "Jary", title: "Send Monday CEO Digest", priority: "high", status: "done" },
-    { id: "t2", agent: "Maya", title: "Draft AJC launch email campaign", priority: "high", status: "in-progress" },
-    { id: "t3", agent: "Alex", title: "Update HSBC BuildOS proposal", priority: "high", status: "pending" },
-  ],
-  "2026-03-04": [
-    { id: "t4", agent: "Morgan", title: "Generate Feb P&L summary", priority: "medium", status: "pending" },
-    { id: "t5", agent: "Riley", title: "Follow up AJC trial users (Day 3)", priority: "high", status: "pending" },
-    { id: "t6", agent: "Jordan", title: "Update Notion project milestones", priority: "low", status: "pending" },
-  ],
-  "2026-03-05": [
-    { id: "t7", agent: "ARIA", title: "Competitive scan — AJB Q1 market", priority: "medium", status: "pending" },
-    { id: "t8", agent: "Casey", title: "BuildOS staging deploy", priority: "high", status: "pending" },
-  ],
-  "2026-03-06": [
-    { id: "t9", agent: "Drew", title: "AJC subscriber growth report", priority: "medium", status: "pending" },
-    { id: "t10", agent: "Alex", title: "AJB enterprise intro emails — batch 1", priority: "high", status: "pending" },
-  ],
-  "2026-03-10": [
-    { id: "t11", agent: "Jary", title: "Weekly CEO Digest — 10 Mar", priority: "high", status: "pending" },
-    { id: "t12", agent: "Morgan", title: "Invoice follow-up — overdue > 14 days", priority: "high", status: "pending" },
-  ],
-  "2026-03-17": [
-    { id: "t13", agent: "Jary", title: "Weekly CEO Digest — 17 Mar", priority: "high", status: "pending" },
-    { id: "t14", agent: "ARIA", title: "AJC mid-March growth review", priority: "medium", status: "pending" },
-  ],
-};
+// Populated live by OpenClaw agent tasks feed.
+export const CALENDAR_TASKS: Record<string, CalTask[]> = {};
 
 // ─── Kanban board ────────────────────────────────────────────────────────────
 
@@ -201,20 +190,8 @@ export type KanbanTask = {
   status: "backlog" | "in-progress" | "review" | "done";
 };
 
-export const KANBAN_TASKS: KanbanTask[] = [
-  { id: "k1",  title: "AJC subscriber onboarding sequence",    agent: "Maya",   tag: "AJC",      status: "in-progress" },
-  { id: "k2",  title: "BuildOS HSBC deck final revision",       agent: "Alex",   tag: "BuildOS",  status: "in-progress" },
-  { id: "k3",  title: "Q1 cashflow projection",                 agent: "Morgan", tag: "Finance",  status: "review" },
-  { id: "k4",  title: "AJB enterprise contact list",           agent: "Alex",   tag: "AJB",      status: "backlog" },
-  { id: "k5",  title: "Social posts — AJC beta week 2",        agent: "Maya",   tag: "AJC",      status: "in-progress" },
-  { id: "k6",  title: "OpenClaw gateway health report",        agent: "Casey",  tag: "Infra",    status: "done" },
-  { id: "k7",  title: "Notion helpdesk board audit",           agent: "Jordan", tag: "Ops",      status: "backlog" },
-  { id: "k8",  title: "Renewal risk report — Mar cohort",      agent: "Riley",  tag: "CS",       status: "review" },
-  { id: "k9",  title: "Competitive teardown — Glassix",        agent: "ARIA",   tag: "Research", status: "backlog" },
-  { id: "k10", title: "SEA market sizing — AJB",               agent: "Drew",   tag: "Research", status: "backlog" },
-  { id: "k11", title: "Staff handbook v1",                     agent: "Sophia", tag: "HR",       status: "backlog" },
-  { id: "k12", title: "BuildOS staging release notes",         agent: "Casey",  tag: "Infra",    status: "done" },
-];
+// Populated live by OpenClaw agent task feed.
+export const KANBAN_TASKS: KanbanTask[] = [];
 
 // ─── Content pipeline ────────────────────────────────────────────────────────
 
@@ -227,15 +204,8 @@ export type PipelineItem = {
   imageUrl?: string;
 };
 
-export const PIPELINE_ITEMS: PipelineItem[] = [
-  { id: "p1",  title: "AJC launch announcement — LinkedIn",         stage: "scheduled",  agent: "Maya",  product: "AJC",     imageUrl: "https://placehold.co/400x200/4f46e5/ffffff?text=AJC+Launch" },
-  { id: "p2",  title: "AJC beta user success story",               stage: "drafting",   agent: "Maya",  product: "AJC" },
-  { id: "p3",  title: "BuildOS ROI case study — manufacturing",    stage: "review",     agent: "Alex",  product: "BuildOS", imageUrl: "https://placehold.co/400x200/0f172a/ffffff?text=BuildOS+ROI" },
-  { id: "p4",  title: "AJB enterprise intro deck",                 stage: "drafting",   agent: "Alex",  product: "AJB" },
-  { id: "p5",  title: "CEO newsletter — March product update",     stage: "idea",       agent: "Jary",  product: "General" },
-  { id: "p6",  title: "AJC feature explainer video script",        stage: "idea",       agent: "Maya",  product: "AJC" },
-  { id: "p7",  title: "UPNX HVAC case study — HSBC building",      stage: "published",  agent: "Alex",  product: "BuildOS", imageUrl: "https://placehold.co/400x200/166534/ffffff?text=Published" },
-];
+// Populated live by OpenClaw content pipeline feed.
+export const PIPELINE_ITEMS: PipelineItem[] = [];
 
 // ─── Templates ───────────────────────────────────────────────────────────────
 
