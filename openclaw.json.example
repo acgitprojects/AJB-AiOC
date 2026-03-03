@@ -48,15 +48,7 @@
   "hooks": {
     "_comment": "hooks.token is SEPARATE from gateway.auth.token — use OPENCLAW_HOOKS_TOKEN env var",
     "token": "change-me-hooks-token",
-    "allowRequestSessionKey": false,
-    "webchat": {
-      "agentId": "hooks",
-      "deliver": false,
-      "wakeMode": "now"
-    },
-    "wake": {
-      "mode": "now"
-    }
+    "allowRequestSessionKey": false
   },
 
   "dmPolicy": "allowlist",

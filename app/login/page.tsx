@@ -3,14 +3,15 @@
 /**
  * app/login/page.tsx
  * ─────────────────────────────────────────────────────────────────────────────
- * Password gate for the OpenClaw Operations Centre.
+ * Login page — email + password, with forgot-password link.
  * Submits to POST /api/auth/login, then redirects to /dashboard (or ?from=…).
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Lock, LogIn, Eye, EyeOff } from "lucide-react";
+import Link from "next/link";
+import { Lock, LogIn, Eye, EyeOff, Mail } from "lucide-react";
 import { Suspense } from "react";
 
 function LoginForm() {
@@ -18,15 +19,14 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo   = searchParams.get("from") ?? "/dashboard";
 
+  const [email, setEmail]           = useState("");
   const [password, setPassword]     = useState("");
   const [showPw, setShowPw]         = useState(false);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  useEffect(() => { emailRef.current?.focus(); }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,17 +38,20 @@ function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ password }),
+        body:    JSON.stringify({ email: email.trim() || undefined, password }),
       });
       const data = await res.json() as { ok: boolean; error?: string };
 
       if (data.ok) {
         router.replace(redirectTo);
       } else {
-        setError("Incorrect password.");
+        const msg =
+          data.error === "email_required"        ? "Please enter your email address." :
+          data.error === "no_password_configured" ? "No password configured. Contact admin." :
+          "Incorrect email or password.";
+        setError(msg);
         setLoading(false);
         setPassword("");
-        inputRef.current?.focus();
       }
     } catch {
       setError("Network error. Please try again.");
@@ -77,7 +80,7 @@ function LoginForm() {
           <h1 className="text-xl font-bold text-white tracking-tight">
             OpenClaw <span className="text-arc-cyan">Ops Centre</span>
           </h1>
-          <p className="text-sm text-slate-500 mt-1">Enter your access password to continue</p>
+          <p className="text-sm text-slate-500 mt-1">Sign in to your account</p>
         </div>
 
         {/* Card */}
@@ -85,13 +88,46 @@ function LoginForm() {
           onSubmit={submit}
           className="glass rounded-2xl p-6 shadow-card border border-navy-700/60 space-y-4"
         >
+          {/* Email */}
           <div>
             <label className="text-xs text-slate-500 font-medium uppercase tracking-widest block mb-1.5">
-              Password
+              Email
             </label>
             <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
+                <Mail size={15} />
+              </span>
               <input
-                ref={inputRef}
+                ref={emailRef}
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                className="w-full text-sm bg-navy-900/70 border border-navy-700 rounded-xl pl-9 pr-4 py-2.5
+                  text-slate-200 placeholder-slate-600
+                  focus:outline-none focus:border-arc-cyan/60 focus:shadow-[0_0_0_3px_rgba(0,212,255,0.15)]
+                  transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Password */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-slate-500 font-medium uppercase tracking-widest">
+                Password
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-xs text-arc-cyan/70 hover:text-arc-cyan transition-colors"
+                tabIndex={-1}
+              >
+                Forgot password?
+              </Link>
+            </div>
+            <div className="relative">
+              <input
                 type={showPw ? "text" : "password"}
                 value={password}
                 onChange={e => setPassword(e.target.value)}

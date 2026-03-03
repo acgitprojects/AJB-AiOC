@@ -20,15 +20,33 @@
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
+// Demo mode flag — when true, all gateway calls return safe mock responses.
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+
+/**
+ * When API_SERVER_URL is set, all HTTP calls route through the API server
+ * (Instance B) instead of directly to OpenClaw (Instance A).
+ * API_SERVER_SECRET is used as the bearer token in that case.
+ *
+ * When API_SERVER_URL is NOT set, the app falls back to calling OpenClaw
+ * directly via OPENCLAW_GATEWAY_URL / OPENCLAW_HOOKS_TOKEN.
+ */
+const apiServerUrl    = process.env.API_SERVER_URL    ?? "";
+const apiServerSecret = process.env.API_SERVER_SECRET ?? "";
+
 export const OPENCLAW_CONFIG = {
-  gatewayUrl:      process.env.OPENCLAW_GATEWAY_URL      ?? "http://localhost:18789",
-  wsUrl:           process.env.OPENCLAW_WS_URL            ?? "ws://localhost:18789",
-  /** Token used for HTTP hooks endpoints (openclaw.json → hooks.token) */
-  hooksToken:      process.env.OPENCLAW_HOOKS_TOKEN       ?? "",
-  /** Token used for WebSocket authentication (openclaw.json → gateway.auth.token) */
-  wsToken:         process.env.OPENCLAW_WS_TOKEN          ?? "",
-  defaultAgentId:  process.env.OPENCLAW_DEFAULT_AGENT_ID ?? "hooks",
-  sessionPrefix:   process.env.OPENCLAW_SESSION_PREFIX   ?? "webchat",
+  /** Effective HTTP base URL — API server if configured, else OpenClaw directly */
+  gatewayUrl:     apiServerUrl || (process.env.OPENCLAW_GATEWAY_URL ?? "http://localhost:18789"),
+  /** WS URL — use API server /ws endpoint if available, else direct OpenClaw WS */
+  wsUrl:          process.env.NEXT_PUBLIC_OPENCLAW_WS_URL ?? process.env.OPENCLAW_WS_URL ?? "ws://localhost:18789",
+  /** HTTP bearer token — API_SERVER_SECRET when routing via API server */
+  hooksToken:     apiServerUrl ? apiServerSecret : (process.env.OPENCLAW_HOOKS_TOKEN ?? ""),
+  /** Token used for WebSocket authentication (browser-side NEXT_PUBLIC var or server-side) */
+  wsToken:        process.env.NEXT_PUBLIC_OPENCLAW_WS_TOKEN ?? process.env.OPENCLAW_WS_TOKEN ?? "",
+  defaultAgentId: process.env.OPENCLAW_DEFAULT_AGENT_ID ?? "hooks",
+  sessionPrefix:  process.env.OPENCLAW_SESSION_PREFIX   ?? "webchat",
+  /** True when calls are proxied through the dedicated API server */
+  viaApiServer:   !!apiServerUrl,
 } as const;
 
 // ─── HTTP Types ───────────────────────────────────────────────────────────────
@@ -112,6 +130,11 @@ export async function sendToAgent(
   message: string,
   opts: Omit<HookAgentPayload, "message"> = {}
 ): Promise<HookAgentResponse> {
+  // Demo mode — return a mock accepted response without hitting the gateway.
+  if (DEMO_MODE) {
+    return { ok: true, runId: `demo-${Date.now()}` };
+  }
+
   const payload: HookAgentPayload = {
     message,
     agentId:  opts.agentId  ?? OPENCLAW_CONFIG.defaultAgentId,
@@ -163,6 +186,11 @@ export async function wakeAgent(
  * Returns ok:false (with an error message) if the gateway is unreachable.
  */
 export async function getGatewayStatus(): Promise<GatewayStatusResponse> {
+  // Demo mode — skip real network call and return a healthy mock response.
+  if (DEMO_MODE) {
+    return { ok: true, version: "demo", uptime: 0, channels: [] };
+  }
+
   try {
     const res = await fetch(`${OPENCLAW_CONFIG.gatewayUrl}/healthz`, {
       method:  "GET",

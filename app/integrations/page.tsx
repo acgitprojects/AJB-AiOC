@@ -147,7 +147,7 @@ export default function IntegrationsPage() {
         const data: GatewayStatusAPIResponse = await res.json();
         if (!cancelled) setGwStatus(data);
       } catch {
-        if (!cancelled) setGwStatus({ connected: false, gatewayUrl: "", checkedAt: new Date().toISOString(), error: "Fetch failed" });
+        if (!cancelled) setGwStatus({ connected: false, gatewayUrl: "", viaApiServer: false, checkedAt: new Date().toISOString(), error: "Fetch failed" });
       } finally {
         if (!cancelled) setGwLoading(false);
       }

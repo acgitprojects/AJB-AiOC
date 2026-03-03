@@ -233,6 +233,31 @@ function BriefingPanel() {
 function Overview() {
   const [range, setRange] = useState<"weekly"|"monthly">("weekly");
   const [clock, setClock] = useState("");
+  const [liveAgents, setLiveAgents] = useState(AGENTS);
+  const [stats, setStats] = useState({
+    tasksToday:     "…",
+    activeAgents:   "…",
+    avgResponseSec: "…",
+    ajcSubscribers: "…",
+  });
+
+  useEffect(() => {
+    fetch("/api/agents").then(r => r.json()).then((data: typeof AGENTS) => {
+      if (Array.isArray(data)) setLiveAgents(data);
+    }).catch(() => {});
+    fetch("/api/dashboard/stats").then(r => r.json()).then((s: {
+      tasksToday: number; activeAgents: number; avgResponseSec: number; ajcSubscribers: number;
+    }) => {
+      if (s?.tasksToday !== undefined) {
+        setStats({
+          tasksToday:     String(s.tasksToday),
+          activeAgents:   `${s.activeAgents}/${AGENTS.length}`,
+          avgResponseSec: `${s.avgResponseSec}s`,
+          ajcSubscribers: String(s.ajcSubscribers),
+        });
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString("en-GB", { hour12: false }));
@@ -266,10 +291,10 @@ function Overview() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Tasks today"       value="23"    sub="+12% vs yesterday"              trend="up"      icon={CheckCheck}    accent="#10d6a0" />
-        <StatCard label="Active agents"     value="8/10"  sub="2 idle"                         trend="neutral" icon={Users}         accent="#00d4ff" />
-        <StatCard label="Avg response"      value="1.9s"  sub="-0.3s vs last week"             trend="up"      icon={Zap}           accent="#f59e0b" />
-        <StatCard label="AJC subscribers"  value="34"    sub="Target: 100 by end Mar"          trend="down"    icon={TrendingUp}    accent="#8b5cf6" />
+        <StatCard label="Tasks today"      value={stats.tasksToday}     sub="Agent-created today"        trend="up"      icon={CheckCheck}  accent="#10d6a0" />
+        <StatCard label="Active agents"    value={stats.activeAgents}   sub="Live from gateway"          trend="neutral" icon={Users}       accent="#00d4ff" />
+        <StatCard label="Avg response"     value={stats.avgResponseSec} sub="OpenClaw gateway"           trend="up"      icon={Zap}         accent="#f59e0b" />
+        <StatCard label="AJC subscribers" value={stats.ajcSubscribers} sub="Target: 100 by end Mar"     trend="down"    icon={TrendingUp}  accent="#8b5cf6" />
       </div>
 
       {/* Chart */}
@@ -316,10 +341,12 @@ function Overview() {
       <div className={`${GLASS}`}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-slate-200">Agent Network</h3>
-          <p className={`${LABEL}`}>10 agents · 8 online</p>
+          <p className={`${LABEL}`}>
+            {liveAgents.length} agents · {liveAgents.filter(a => a.status === "online").length} online
+          </p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {AGENTS.map(a => <AgentHex key={a.id} agent={a} />)}
+          {liveAgents.map(a => <AgentHex key={a.id} agent={a} />)}
         </div>
       </div>
 
@@ -336,7 +363,7 @@ function Overview() {
               </tr>
             </thead>
             <tbody>
-              {AGENTS.map(a => (
+              {liveAgents.map(a => (
                 <tr key={a.id} className="border-b border-[rgba(255,255,255,0.03)] hover:bg-[rgba(0,212,255,0.03)] transition-colors">
                   <td className={`py-2.5 ${MONO} text-slate-100 text-xs font-semibold`}>{a.name}</td>
                   <td className="py-2.5 text-slate-500 text-xs">{a.role}</td>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CALENDAR_TASKS } from "@/lib/mock-data";
+import { useState, useEffect } from "react";
+import { type CalTask } from "@/lib/mock-data";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const GLASS = "glass glass-hover rounded-xl p-5 shadow-card";
@@ -13,8 +13,16 @@ const priorityColor: Record<string, string> = {
 };
 
 export default function CalendarPage() {
-  const [current, setCurrent] = useState(new Date(2026, 2, 1));
+  const [current,  setCurrent]  = useState(new Date(2026, 2, 1));
   const [selected, setSelected] = useState("2026-03-03");
+  const [calData,  setCalData]  = useState<Record<string, CalTask[]>>({});
+
+  useEffect(() => {
+    fetch("/api/calendar")
+      .then(r => r.json())
+      .then((d: Record<string, CalTask[]>) => setCalData(d))
+      .catch(() => {});
+  }, []);
 
   const year  = current.getFullYear();
   const month = current.getMonth();
@@ -23,7 +31,7 @@ export default function CalendarPage() {
   const monthName   = current.toLocaleString("default", { month: "long", year: "numeric" });
   const pad = (d: number) =>
     `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  const tasks = CALENDAR_TASKS[selected] ?? [];
+  const tasks = calData[selected] ?? [];
 
   return (
     <div className="p-4 lg:p-6 max-w-screen-xl mx-auto">
@@ -62,7 +70,7 @@ export default function CalendarPage() {
             {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
             {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
               const key     = pad(d);
-              const hasTasks = !!CALENDAR_TASKS[key];
+              const hasTasks = !!calData[key];
               const isToday = d === 3 && month === 2 && year === 2026;
               const isSel   = key === selected;
               return (

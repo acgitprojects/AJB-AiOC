@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Bot,
@@ -16,24 +17,35 @@ import {
   Network,
   Workflow,
   Newspaper,
+  CheckSquare,
+  Users,
+  UserCircle,
+  LogOut,
 } from "lucide-react";
 
 const nav = [
   { href: "/dashboard",    label: "Dashboard",     icon: LayoutDashboard },
-  { href: "/agent",        label: "Agent",          icon: Bot },
   { href: "/briefing",     label: "Briefing",       icon: Newspaper },
-  { href: "/calendar",     label: "Calendar",       icon: CalendarDays },
+  { href: "/tasks",        label: "My Tasks",       icon: CheckSquare },
+  { href: "/agent",        label: "Agent",          icon: Bot },
   { href: "/board",        label: "Board",          icon: Columns2 },
-  { href: "/org",          label: "Org Chart",      icon: Network },
+  { href: "/calendar",     label: "Calendar",       icon: CalendarDays },
   { href: "/pipeline",     label: "Pipeline",       icon: Workflow },
+  { href: "/org",          label: "Org Chart",      icon: Network },
   { href: "/library",      label: "Library",        icon: BookOpen },
   { href: "/integrations", label: "Integrations",   icon: Plug },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router   = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [gwOnline, setGwOnline] = useState<boolean | null>(null);
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "DELETE" }).catch(() => null);
+    router.replace("/login");
+  };
 
   // Ping gateway status for the status dot
   useEffect(() => {
@@ -101,7 +113,7 @@ export default function Sidebar() {
 
       {/* ── Desktop sidebar (group for hover expand) ───────────── */}
       <aside className="group hidden lg:flex flex-col fixed top-0 left-0 bottom-0 z-30
-        w-16 hover:w-56 transition-all duration-300 ease-in-out overflow-hidden
+        w-16 hover:w-56 transition-all duration-200 ease-in-out overflow-hidden
         bg-[#040d18]/95 backdrop-blur
         border-r border-[rgba(0,212,255,0.10)]">
 
@@ -139,13 +151,19 @@ export default function Sidebar() {
             </span>
           </div>
           <NavDivider />
-          <Link href="/integrations"
+          <NavLink href="/admin/users" label="Users" icon={Users} />
+          <NavLink href="/profile"      label="Profile"  icon={UserCircle} />
+          <NavLink href="/integrations" label="Settings" icon={Settings} />
+          <NavDivider />
+          <button
+            onClick={logout}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500
-              hover:text-slate-300 hover:bg-[rgba(255,255,255,0.04)] transition-all text-sm">
-            <Settings size={16} className="shrink-0" />
+              hover:text-red-400 hover:bg-red-500/[0.06] transition-all text-sm w-full"
+          >
+            <LogOut size={16} className="shrink-0" />
             <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 delay-75
-              whitespace-nowrap">Settings</span>
-          </Link>
+              whitespace-nowrap">Sign out</span>
+          </button>
         </div>
       </aside>
     </>

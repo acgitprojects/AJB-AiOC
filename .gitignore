@@ -6,6 +6,10 @@ node_modules/
 # production
 /.next/
 /out/
+/.open-next/
+
+# Cloudflare env (copy from .env.production.example)
+.env.production
 
 # env
 .env

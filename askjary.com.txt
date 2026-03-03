@@ -1,0 +1,63 @@
+;;
+;; Domain:     askjary.com.
+;; Exported:   2026-03-03 10:59:44
+;;
+;; This file is intended for use for informational and archival
+;; purposes ONLY and MUST be edited before use on a production
+;; DNS server.  In particular, you must:
+;;   -- update the SOA record with the correct authoritative name server
+;;   -- update the SOA record with the contact e-mail address information
+;;   -- update the NS record(s) with the authoritative name servers for this domain.
+;;
+;; For further information, please consult the BIND documentation
+;; located on the following website:
+;;
+;; http://www.isc.org/
+;;
+;; And RFC 1035:
+;;
+;; http://www.ietf.org/rfc/rfc1035.txt
+;;
+;; Please note that we do NOT offer technical support for any use
+;; of this zone data, the BIND name server, or any other third-party
+;; DNS software.
+;;
+;; Use at your own risk.
+;; SOA Record
+askjary.com	3600	IN	SOA	abdullah.ns.cloudflare.com. dns.cloudflare.com. 2052420218 10000 2400 604800 3600
+
+;; NS Records
+askjary.com.	86400	IN	NS	abdullah.ns.cloudflare.com.
+askjary.com.	86400	IN	NS	deb.ns.cloudflare.com.
+
+;; A Records
+api.askjary.com.	1	IN	A	43.160.219.253 ; cf_tags=cf-proxied:true
+askjary.com.	600	IN	A	185.199.108.153 ; cf_tags=cf-proxied:false
+askjary.com.	600	IN	A	185.199.109.153 ; cf_tags=cf-proxied:false
+askjary.com.	600	IN	A	185.199.111.153 ; cf_tags=cf-proxied:false
+askjary.com.	600	IN	A	185.199.110.153 ; cf_tags=cf-proxied:false
+oc.askjary.com.	1	IN	A	43.156.235.198 ; cf_tags=cf-proxied:false
+
+;; AAAA Records
+askjary.com.	600	IN	AAAA	2606:50c0:8003::153 ; cf_tags=cf-proxied:false
+askjary.com.	600	IN	AAAA	2606:50c0:8002::153 ; cf_tags=cf-proxied:false
+askjary.com.	600	IN	AAAA	2606:50c0:8001::153 ; cf_tags=cf-proxied:false
+askjary.com.	600	IN	AAAA	2606:50c0:8000::153 ; cf_tags=cf-proxied:false
+
+;; CNAME Records
+www.askjary.com.	1	IN	CNAME	acgitprojects.github.io. ; cf_tags=cf-proxied:false
+
+;; MX Records
+askjary.com.	1	IN	MX	10 alt4.aspmx.l.google.com.
+askjary.com.	1	IN	MX	10 alt3.aspmx.l.google.com.
+askjary.com.	1	IN	MX	5 alt2.aspmx.l.google.com.
+askjary.com.	1	IN	MX	5 alt1.aspmx.l.google.com.
+askjary.com.	1	IN	MX	1 aspmx.l.google.com.
+
+;; TXT Records
+askjary.com.	1	IN	TXT	"google-site-verification=zAO6WhlusFAyvsfXNonNTFIN3V_y8CN0wfM6C4BYoxc"
+askjary.com.	1	IN	TXT	"v=spf1 include:dc-aa8e722993._spfm.askjary.com ~all"
+dc-aa8e722993._spfm.askjary.com.	3600	IN	TXT	"v=spf1 include:_spf.google.com ~all"
+_dmarc.askjary.com.	1	IN	TXT	"v=DMARC1; p=reject; adkim=r; aspf=r; rua=mailto:andrew.cheung@askjary.com;"
+_github-pages-challenge-acgitprojects.askjary.com.	1	IN	TXT	"3cefc4044b7d66b16cb8a3b6dc82fe"
+google._domainkey.askjary.com.	1	IN	TXT	"v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApsWcHEwP4VdgpN0NWi6uOZlHr/3usKV93DIhEJLoiIVO92MIO5dDpiVSkKztKs1zqdFiyoz5w0+5QKj10Qa19a6ASkSaXfgl+F77D1wk+rKYmsL6RvO1NRCJaAlyVTa9fXj1crqqB3beNRAoScgH4B0wVSlThsmBPo49VcIKKUxr6Y4AB7a0tbmiw16NgQZSl" "LjOlUFUV+uaH8pcQn1LNMasrxTL/YOKUGR7JXc3BYMCIA3dSOv4wtQHPSRy015IR/ZHy/vOclwsSotOXw8iUWcyQu/jvpE0DvTMydcq0QbbBiSOas9sFbcvi9QnqNBPYM3assG+XeDvkcqEVh/4iwIDAQAB"

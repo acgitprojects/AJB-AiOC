@@ -13,6 +13,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { sendToAgent } from "@/lib/openclaw";
+import { getSession } from "@/lib/session";
+
 
 export interface ChatRequest {
   message: string;
@@ -27,6 +29,15 @@ export interface ChatTriggerResponse {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse<ChatTriggerResponse>> {
+  // SECURITY: Verify user is authenticated
+  const session = await getSession(req);
+  if (!session) {
+    return NextResponse.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401 }
+    );
+  }
+
   let body: ChatRequest;
   try {
     body = (await req.json()) as ChatRequest;

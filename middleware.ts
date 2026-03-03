@@ -1,26 +1,45 @@
 /**
  * middleware.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Simple password-gate for the entire dashboard.
- * Checks for a signed session cookie (aioc_session) set by /api/auth/login.
- * Unauthenticated requests are redirected to /login.
+ * Auth gate for the entire dashboard.
+ *
+ * Checks for a valid signed session cookie (aioc_session) set by
+ * POST /api/auth/login. Also accepts the legacy plain-secret cookie for
+ * backward compatibility during migration.
  *
  * Public routes (no auth required):
- *   /login                 — the login page itself
- *   /api/auth/login        — login POST handler
- *   /_next/*               — Next.js assets
- *   /favicon.ico           — favicon
+ *   /login                        — login page
+ *   /forgot-password              — request reset
+ *   /reset-password               — reset with token
+ *   /api/auth/*                   — auth endpoints
+ *   /_next/*                      — Next.js assets
+ *   /favicon.ico
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { verifySession } from "@/lib/auth-utils";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/api/auth",
+];
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow Next.js internals and public paths through without auth.
+  // Production guard: refuse if session secret is still the insecure default.
+  const secret = process.env.DASHBOARD_SESSION_SECRET ?? "aioc";
+  if (process.env.NODE_ENV === "production" && secret === "aioc") {
+    return new NextResponse(
+      "AiOC: DASHBOARD_SESSION_SECRET is not set. Set a strong secret before deploying.",
+      { status: 503, headers: { "Content-Type": "text/plain" } },
+    );
+  }
+
+  // Allow static assets and public paths through.
   if (
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
@@ -29,21 +48,25 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check session cookie.
-  const session = req.cookies.get("aioc_session")?.value;
-  const expected = process.env.DASHBOARD_SESSION_SECRET ?? "aioc";
+  const token = req.cookies.get("aioc_session")?.value ?? "";
 
-  if (session !== expected) {
-    const loginUrl = req.nextUrl.clone();
-    loginUrl.pathname = "/login";
-    loginUrl.search = `?from=${encodeURIComponent(pathname)}`;
-    return NextResponse.redirect(loginUrl);
+  // ── New: verify HMAC-signed session token ────────────────────────────────
+  if (token.includes(".")) {
+    const payload = await verifySession(token, secret);
+    if (payload) return NextResponse.next();
   }
 
-  return NextResponse.next();
+  // ── Legacy: plain-secret cookie (pre-user-management) ───────────────────
+  if (token && token === secret) {
+    return NextResponse.next();
+  }
+
+  const loginUrl = req.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  loginUrl.search = `?from=${encodeURIComponent(pathname)}`;
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {
-  // Run on every route except static files.
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

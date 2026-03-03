@@ -36,14 +36,14 @@ const config: Config = {
       },
       animation: {
         "pulse-slow": "pulse 3s cubic-bezier(0.4,0,0.6,1) infinite",
-        "fade-in":    "fadeIn 0.25s ease-out",
+        "fade-in":    "fadeIn 0.15s ease-out",
         "scan":       "scan 4s linear infinite",
         "blink":      "blink 1.2s step-end infinite",
       },
       keyframes: {
         fadeIn: {
-          "0%":   { opacity: "0", transform: "translateY(6px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" },
+          "0%":   { opacity: "0" },
+          "100%": { opacity: "1" },
         },
         scan: {
           "0%":   { backgroundPosition: "0 -100%" },

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { KANBAN_TASKS, type KanbanTask } from "@/lib/mock-data";
+import { useState, useCallback, useEffect } from "react";
+import { type KanbanTask } from "@/lib/mock-data";
+import { Loader2 } from "lucide-react";
 
 const GLASS = "glass glass-hover rounded-xl p-5 shadow-card";
 const MONO  = "font-mono-jet";
@@ -15,10 +16,24 @@ const kanbanCols: { key: KanbanTask["status"]; label: string; accent: string }[]
 ];
 
 export default function BoardPage() {
-  const [tasks, setTasks] = useState(KANBAN_TASKS);
+  const [tasks,   setTasks]   = useState<KanbanTask[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/board")
+      .then(r => r.json())
+      .then((d: KanbanTask[]) => { setTasks(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
 
   const move = useCallback((id: string, status: KanbanTask["status"]) => {
+    // Optimistic update
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+    fetch("/api/board", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    }).catch(() => { /* silent — optimistic state already applied */ });
   }, []);
 
   return (
@@ -30,71 +45,81 @@ export default function BoardPage() {
         <p className={`${LABEL} mt-1`}>Kanban — drag tasks across columns</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
-        {kanbanCols.map(col => {
-          const colTasks = tasks.filter(t => t.status === col.key);
-          return (
-            <div
-              key={col.key}
-              className="rounded-xl border"
-              style={{ borderColor: `${col.accent}25`, background: `${col.accent}06` }}
-            >
+      {loading ? (
+        <div className="flex items-center justify-center py-20 gap-3 text-slate-500">
+          <Loader2 size={20} className="animate-spin text-[#00d4ff]" />
+          <span className="text-sm">Loading board from OpenClaw…</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
+          {kanbanCols.map(col => {
+            const colTasks = tasks.filter(t => t.status === col.key);
+            return (
               <div
-                className="px-3 py-2.5 flex items-center justify-between border-b"
-                style={{ borderColor: `${col.accent}20` }}
+                key={col.key}
+                className="rounded-xl border"
+                style={{ borderColor: `${col.accent}25`, background: `${col.accent}06` }}
               >
-                <span
-                  className={`${MONO} text-xs font-semibold uppercase tracking-widest`}
-                  style={{ color: col.accent }}
+                <div
+                  className="px-3 py-2.5 flex items-center justify-between border-b"
+                  style={{ borderColor: `${col.accent}20` }}
                 >
-                  {col.label}
-                </span>
-                <span
-                  className={`${MONO} text-xs px-1.5 py-0.5 rounded-full`}
-                  style={{ background: `${col.accent}18`, color: col.accent }}
-                >
-                  {colTasks.length}
-                </span>
-              </div>
-
-              <div className="p-2 space-y-2 min-h-[120px]">
-                {colTasks.map(t => (
-                  <div
-                    key={t.id}
-                    className="glass rounded-lg p-2.5 hover:border-[rgba(0,212,255,0.25)] transition-all group/card cursor-default"
+                  <span
+                    className={`${MONO} text-xs font-semibold uppercase tracking-widest`}
+                    style={{ color: col.accent }}
                   >
-                    <p className="text-slate-200 text-xs font-medium leading-snug">{t.title}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className={`${MONO} text-[11px] text-slate-500`}>{t.agent}</span>
-                      <span
-                        className={`${MONO} text-[11px] px-1.5 py-0.5 rounded`}
-                        style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}
-                      >
-                        {t.tag}
-                      </span>
+                    {col.label}
+                  </span>
+                  <span
+                    className={`${MONO} text-xs px-1.5 py-0.5 rounded-full`}
+                    style={{ background: `${col.accent}18`, color: col.accent }}
+                  >
+                    {colTasks.length}
+                  </span>
+                </div>
+
+                <div className="p-2 space-y-2 min-h-[120px]">
+                  {colTasks.length === 0 && (
+                    <p className="text-slate-700 text-xs p-2">No tasks</p>
+                  )}
+                  {colTasks.map(t => (
+                    <div
+                      key={t.id}
+                      className="glass rounded-lg p-2.5 hover:border-[rgba(0,212,255,0.25)] transition-all group/card cursor-default"
+                    >
+                      <p className="text-slate-200 text-xs font-medium leading-snug">{t.title}</p>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className={`${MONO} text-[11px] text-slate-500`}>{t.agent}</span>
+                        <span
+                          className={`${MONO} text-[11px] px-1.5 py-0.5 rounded`}
+                          style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}
+                        >
+                          {t.tag}
+                        </span>
+                      </div>
+                      {/* Move buttons */}
+                      <div className="flex gap-1 mt-2 flex-wrap opacity-0 group-hover/card:opacity-100 transition-opacity">
+                        {kanbanCols
+                          .filter(c => c.key !== col.key)
+                          .map(c => (
+                            <button
+                              key={c.key}
+                              onClick={() => move(t.id, c.key)}
+                              className={`${MONO} text-[10px] px-1.5 py-0.5 rounded transition-colors`}
+                              style={{ background: `${c.accent}18`, color: c.accent }}
+                            >
+                              → {c.label}
+                            </button>
+                          ))}
+                      </div>
                     </div>
-                    {/* Move buttons */}
-                    <div className="flex gap-1 mt-2 flex-wrap opacity-0 group-hover/card:opacity-100 transition-opacity">
-                      {kanbanCols
-                        .filter(c => c.key !== col.key)
-                        .map(c => (
-                          <button
-                            key={c.key}
-                            onClick={() => move(t.id, c.key)}
-                            className={`${MONO} text-[10px] px-1.5 py-0.5 rounded transition-colors`}
-                            style={{ background: `${c.accent}18`, color: c.accent }}
-                          >
-                            → {c.label}
-                          </button>
-                        ))}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
