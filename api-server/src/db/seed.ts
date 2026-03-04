@@ -1,7 +1,144 @@
-import type { MyTask, Agent, KanbanTask, PipelineItem, CalendarData, DailyBriefing, User } from "@ajb/contract";
+import { sql } from "./client";
+import * as agentRepo from "../repositories/agent.repository";
+import * as taskRepo from "../repositories/task.repository";
+import { insertUserWithPassword } from "../repositories/user.repository";
+import { hashPassword } from "../services/password";
+import type { Agent, MyTask } from "@ajb/contract";
 
-// Tasks - seeded from frontend/lib/mock-data.ts MY_TASKS
-export const tasks: MyTask[] = [
+const AGENTS: Agent[] = [
+  {
+    id: "jary",
+    name: "Jary",
+    role: "Executive Assistant",
+    model: "GPT-4o",
+    status: "offline",
+    skills: ["scheduling", "comms", "delegation", "telegram"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: ["aria", "alex", "maya", "jordan", "morgan", "riley", "casey", "drew", "sophia"],
+    reportsTo: null,
+  },
+  {
+    id: "aria",
+    name: "ARIA",
+    role: "Strategic Intelligence",
+    model: "Claude Sonnet",
+    status: "offline",
+    skills: ["market research", "competitive analysis", "planning"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: [],
+    reportsTo: "jary",
+  },
+  {
+    id: "alex",
+    name: "Alex",
+    role: "Sales & BD",
+    model: "GPT-4o",
+    status: "offline",
+    skills: ["CRM", "pipeline", "proposals", "Zoho CRM"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: [],
+    reportsTo: "jary",
+  },
+  {
+    id: "maya",
+    name: "Maya",
+    role: "Marketing & Content",
+    model: "GPT-4o",
+    status: "offline",
+    skills: ["copywriting", "social media", "campaigns", "AJC growth"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: [],
+    reportsTo: "jary",
+  },
+  {
+    id: "jordan",
+    name: "Jordan",
+    role: "Operations & Projects",
+    model: "GPT-4o",
+    status: "offline",
+    skills: ["Notion", "project tracking", "SOPs", "reporting"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: [],
+    reportsTo: "jary",
+  },
+  {
+    id: "morgan",
+    name: "Morgan",
+    role: "Finance & Compliance",
+    model: "o3-mini",
+    status: "offline",
+    skills: ["Zoho Books", "invoicing", "cashflow", "tax"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: [],
+    reportsTo: "jary",
+  },
+  {
+    id: "riley",
+    name: "Riley",
+    role: "Customer Success",
+    model: "GPT-4o",
+    status: "offline",
+    skills: ["helpdesk", "onboarding", "renewals", "NPS"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: [],
+    reportsTo: "jary",
+  },
+  {
+    id: "casey",
+    name: "Casey",
+    role: "Engineering & DevOps",
+    model: "o3-mini",
+    status: "offline",
+    skills: ["infra", "CI/CD", "BuildOS", "cloud"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: [],
+    reportsTo: "jary",
+  },
+  {
+    id: "drew",
+    name: "Drew",
+    role: "Research & Data",
+    model: "Claude Sonnet",
+    status: "offline",
+    skills: ["data analysis", "reporting", "benchmarking"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: [],
+    reportsTo: "jary",
+  },
+  {
+    id: "sophia",
+    name: "Sophia",
+    role: "HR & Culture",
+    model: "GPT-4o",
+    status: "offline",
+    skills: ["hiring", "onboarding", "culture", "docs"],
+    tasksCompleted: 0,
+    responseRate: 0,
+    avgResponseMs: 0,
+    reports: [],
+    reportsTo: "jary",
+  },
+];
+
+const TASKS: MyTask[] = [
   {
     id: "task-001",
     title: "Approve AJC LinkedIn campaign brief",
@@ -148,179 +285,47 @@ export const tasks: MyTask[] = [
   },
 ];
 
-// Agents - seeded from mock-data.ts AGENTS
-export const agents: Agent[] = [
-  {
-    id: "jary",
-    name: "Jary",
-    role: "Executive Assistant",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["scheduling", "comms", "delegation", "telegram"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: ["aria", "alex", "maya", "jordan", "morgan", "riley", "casey", "drew", "sophia"],
-    reportsTo: null,
-  },
-  {
-    id: "aria",
-    name: "ARIA",
-    role: "Strategic Intelligence",
-    model: "Claude Sonnet",
-    status: "offline",
-    skills: ["market research", "competitive analysis", "planning"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "alex",
-    name: "Alex",
-    role: "Sales & BD",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["CRM", "pipeline", "proposals", "Zoho CRM"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "maya",
-    name: "Maya",
-    role: "Marketing & Content",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["copywriting", "social media", "campaigns", "AJC growth"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "jordan",
-    name: "Jordan",
-    role: "Operations & Projects",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["Notion", "project tracking", "SOPs", "reporting"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "morgan",
-    name: "Morgan",
-    role: "Finance & Compliance",
-    model: "o3-mini",
-    status: "offline",
-    skills: ["Zoho Books", "invoicing", "cashflow", "tax"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "riley",
-    name: "Riley",
-    role: "Customer Success",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["helpdesk", "onboarding", "renewals", "NPS"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "casey",
-    name: "Casey",
-    role: "Engineering & DevOps",
-    model: "o3-mini",
-    status: "offline",
-    skills: ["infra", "CI/CD", "BuildOS", "cloud"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "drew",
-    name: "Drew",
-    role: "Research & Data",
-    model: "Claude Sonnet",
-    status: "offline",
-    skills: ["data analysis", "reporting", "benchmarking"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "sophia",
-    name: "Sophia",
-    role: "HR & Culture",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["hiring", "onboarding", "culture", "docs"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-];
+export async function seedIfEmpty(): Promise<void> {
+  const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text as count FROM agents`;
+  if (Number(count) > 0) return;
 
-// Board - empty initially (per KANBAN_TASKS = [] in mock-data)
-export const board: KanbanTask[] = [];
+  console.log("Seeding database with initial data...");
 
-// Pipeline - empty initially (per PIPELINE_ITEMS = [] in mock-data)
-export const pipeline: PipelineItem[] = [];
+  await agentRepo.insertMany(AGENTS);
+  await taskRepo.insertMany(TASKS);
 
-// Calendar - empty initially (per CALENDAR_TASKS = {} in mock-data)
-export const calendar: CalendarData = {};
+  const adminPassword = process.env.ADMIN_PASSWORD ?? "changeme";
+  const hash = await hashPassword(adminPassword);
+  await insertUserWithPassword(
+    {
+      id: "admin-1",
+      email: "admin@ajb.com",
+      name: "Andrew",
+      role: "admin",
+      alertsEnabled: false,
+    },
+    hash,
+  );
 
-// Briefing - seeded with empty sections
-export const briefing: DailyBriefing = {
-  date: new Date().toISOString().slice(0, 10),
-  generatedAt: "--:--",
-  status: "error",
-  sections: [
-    { id: "email", title: "Email Triage", accent: "#ef4444", items: [] },
-    { id: "calendar", title: "Today's Schedule", accent: "#00d4ff", items: [] },
-    { id: "tasks", title: "Notion Tasks", accent: "#8b5cf6", items: [] },
-    { id: "news", title: "Headlines", accent: "#f59e0b", items: [] },
-    { id: "financial", title: "Financial Pulse", accent: "#10d6a0", items: [] },
-  ],
-};
+  console.log("Seed complete.");
+}
 
-// Users - one default admin
-export const users: User[] = [
-  {
-    id: "admin-1",
-    email: "admin@ajb.com",
-    name: "Andrew",
-    role: "admin",
-    alertsEnabled: false,
-    createdAt: new Date().toISOString(),
-  },
-];
+/** Wipe all data and re-seed from scratch. Used by the test reset endpoint. */
+export async function resetAndReseed(): Promise<void> {
+  await sql`TRUNCATE task_delegations, tasks, user_passwords, users, agents RESTART IDENTITY CASCADE`;
+  await agentRepo.insertMany(AGENTS);
+  await taskRepo.insertMany(TASKS);
 
-// Simple password store (plain text for dev; env var override)
-export const passwords: Record<string, string> = {
-  "admin-1": process.env.ADMIN_PASSWORD ?? "changeme",
-};
-
-// Reset tokens: token -> userId
-export const resetTokens: Map<string, { userId: string; expiresAt: number }> = new Map();
+  const adminPassword = process.env.ADMIN_PASSWORD ?? "changeme";
+  const hash = await hashPassword(adminPassword);
+  await insertUserWithPassword(
+    {
+      id: "admin-1",
+      email: "admin@ajb.com",
+      name: "Andrew",
+      role: "admin",
+      alertsEnabled: false,
+    },
+    hash,
+  );
+}
