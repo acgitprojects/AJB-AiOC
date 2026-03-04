@@ -1,4 +1,4 @@
-import { calendar } from "../db/seed";
+import { calendar } from "../db/in-memory";
 
 export const calendarHandlers = {
   list: async () => ({

@@ -1,4 +1,4 @@
-import { board } from "../db/seed";
+import { board } from "../db/in-memory";
 import type { KanbanTask } from "@ajb/contract";
 
 export const boardHandlers = {

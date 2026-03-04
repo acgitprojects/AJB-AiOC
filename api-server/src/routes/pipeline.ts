@@ -1,4 +1,4 @@
-import { pipeline } from "../db/seed";
+import { pipeline } from "../db/in-memory";
 
 export const pipelineHandlers = {
   list: async () => ({

@@ -1,4 +1,4 @@
-import { briefing } from "../db/seed";
+import { briefing } from "../db/in-memory";
 
 export const briefingHandlers = {
   get: async () => {

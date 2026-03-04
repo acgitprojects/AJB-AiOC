@@ -1,7 +1,7 @@
-import { agents } from "../db/seed";
+import { listAgents } from "../services/agent.service";
 
 export const agentHandlers = {
   list: async () => {
-    return { status: 200 as const, body: agents };
+    return { status: 200 as const, body: await listAgents() };
   },
 };
