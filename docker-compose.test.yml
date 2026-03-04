@@ -1,0 +1,27 @@
+# Test overlay — use alongside docker-compose.yml via -f flag.
+# Only overrides what tests require; everything else is inherited from the primary.
+# Used by: tests/helpers/compose-env.ts (API e2e tests)
+services:
+  postgres:
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aioc -d aioc"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  api-server:
+    ports:
+      - "0:3001"
+    restart: "no"
+    environment:
+      ADMIN_PASSWORD: "testpassword"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/agents > /dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s

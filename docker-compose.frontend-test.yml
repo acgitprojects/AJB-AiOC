@@ -1,0 +1,86 @@
+# Standalone compose for frontend Playwright tests.
+# Self-contained — does NOT inherit from docker-compose.yml.
+# No host port bindings: services communicate via Docker service names.
+# run_tests.sh launches one isolated stack per test file: -p fe2e-XXXX
+services:
+  postgres:
+    image: postgres:16-alpine
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_DB: aioc
+      POSTGRES_USER: aioc
+      POSTGRES_PASSWORD: devpassword
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aioc -d aioc"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  api-server:
+    build:
+      context: .
+      dockerfile: api-server/Dockerfile
+    expose:
+      - "3001"
+    environment:
+      PORT: "3001"
+      DATABASE_URL: "postgresql://aioc:devpassword@postgres:5432/aioc"
+      OPENCLAW_GATEWAY_URL: "http://localhost:18789"
+      ADMIN_PASSWORD: "testpassword"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/agents > /dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    expose:
+      - "80"
+    depends_on:
+      - api-server
+    restart: "no"
+
+  nginx:
+    build:
+      context: nginx
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+    depends_on:
+      api-server:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ > /dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # Runs Playwright inside the compose network; connects to nginx/api-server by name.
+  test-runner:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile.test-runner
+    environment:
+      BASE_URL: "http://nginx"
+      API_URL: "http://api-server:3001"
+    depends_on:
+      nginx:
+        condition: service_healthy
+    volumes:
+      - ./tests/screenshots:/workspace/tests/screenshots
+    restart: "no"
+
+volumes:
+  postgres_data:

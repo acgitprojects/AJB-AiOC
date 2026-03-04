@@ -1,0 +1,30 @@
+FROM oven/bun:latest
+
+# Playwright Chromium system dependencies (glibc required — oven/bun:latest is Debian-based)
+RUN apt-get update && apt-get install -y \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+    libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+    libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
+    libx11-6 libx11-xcb1 libxcb1 libxext6 \
+    --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Install monorepo dependencies (same pattern as other services)
+COPY package.json bun.lock ./
+COPY contract/package.json ./contract/
+COPY frontend/package.json ./frontend/
+COPY api-server/package.json ./api-server/
+RUN bun install --frozen-lockfile
+
+# Download Playwright's Chromium binary into the image layer
+RUN node_modules/.bin/playwright install chromium
+
+# Copy test sources and shared contract types
+COPY tests/ ./tests/
+COPY contract/ ./contract/
+
+# Default — overridden per-stack by TEST_FILE env var
+ENV TEST_FILE=tests/frontend/tasks.frontend.test.ts
+
+CMD bun test ${TEST_FILE} --timeout 120000 --bail

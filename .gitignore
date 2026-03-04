@@ -12,3 +12,7 @@ dist/
 tests/screenshots/
 playwright-report/
 test-results/
+*.png
+
+# Playwright MCP logs
+.playwright-mcp/
