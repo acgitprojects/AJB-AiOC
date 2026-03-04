@@ -15,6 +15,7 @@ export const TaskDelegationSchema = z.object({
   reason: z.string().optional(),
   status: z.enum(["PENDING", "ACCEPTED", "REJECTED"]),
 });
+export type TaskDelegation = z.infer<typeof TaskDelegationSchema>;
 
 export const MyTaskSchema = z.object({
   id: z.string(),
@@ -42,3 +43,15 @@ export const TaskPatchSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 export type TaskPatch = z.infer<typeof TaskPatchSchema>;
+
+export const TaskCreateSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional(),
+  createdByAgent: z.string(),
+  assignee: TaskAssigneeSchema,
+  priority: z.enum(["high", "medium", "low"]).default("medium"),
+  status: z.enum(["pending", "in-progress", "done", "delegated"]).default("pending"),
+  dueDate: z.string().optional(),
+  tags: z.array(z.string()).default([]),
+});
+export type TaskCreate = z.infer<typeof TaskCreateSchema>;

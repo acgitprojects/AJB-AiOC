@@ -1,6 +1,6 @@
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
-import { MyTaskSchema, TaskPatchSchema } from "./schemas/task";
+import { MyTaskSchema, TaskPatchSchema, TaskCreateSchema } from "./schemas/task";
 import { AgentSchema } from "./schemas/agent";
 import { DailyBriefingSchema } from "./schemas/briefing";
 import { DashboardStatsSchema } from "./schemas/dashboard";
@@ -39,6 +39,12 @@ export const contract = c.router({
       method: "GET",
       path: "/api/tasks",
       responses: { 200: z.array(MyTaskSchema) },
+    },
+    create: {
+      method: "POST",
+      path: "/api/tasks",
+      body: TaskCreateSchema,
+      responses: { 201: MyTaskSchema },
     },
     patch: {
       method: "PATCH",
