@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { type CalTask } from "@ajb/contract";
+import { type MyTask, type Agent } from "@ajb/contract";
+import { apiClient } from "@/lib/api-client";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { TaskDetailModal } from "@/components/TaskDetailModal";
 
 const GLASS = "glass glass-hover rounded-xl p-5 shadow-card";
 const MONO  = "font-mono-jet";
@@ -13,16 +15,43 @@ const priorityColor: Record<string, string> = {
 };
 
 export default function CalendarPage() {
-  const [current,  setCurrent]  = useState(new Date(2026, 2, 1));
-  const [selected, setSelected] = useState("2026-03-03");
-  const [calData,  setCalData]  = useState<Record<string, CalTask[]>>({});
+  const [current,    setCurrent]    = useState(new Date(2026, 2, 1));
+  const [selected,   setSelected]   = useState("2026-03-03");
+  const [calData,    setCalData]    = useState<Record<string, MyTask[]>>({});
+  const [agents,     setAgents]     = useState<Agent[]>([]);
+  const [detailTask, setDetailTask] = useState<MyTask | null>(null);
 
   useEffect(() => {
-    fetch("/api/calendar")
-      .then(r => r.json())
-      .then((d: Record<string, CalTask[]>) => setCalData(d))
-      .catch(() => {});
+    apiClient.agents.list({}).then(res => {
+      if (res.status === 200) setAgents(res.body);
+    }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const year  = current.getFullYear();
+    const month = current.getMonth();
+    const pad2  = (n: number) => String(n).padStart(2, "0");
+    const dueDateFrom = `${year}-${pad2(month + 1)}-01`;
+    const lastDay     = new Date(year, month + 1, 0).getDate();
+    const dueDateTo   = `${year}-${pad2(month + 1)}-${pad2(lastDay)}`;
+
+    apiClient.tasks.list({ query: { dueDateFrom, dueDateTo } })
+      .then(res => {
+        if (res.status !== 200) return;
+        const grouped: Record<string, MyTask[]> = {};
+        for (const task of res.body) {
+          if (!task.dueDate) continue;
+          const key = task.dueDate.slice(0, 10);
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(task);
+        }
+        setCalData(grouped);
+      })
+      .catch(() => {});
+  }, [current]);
+
+  const agentMap = Object.fromEntries(agents.map(a => [a.id, a.name]));
+  const agentName = (id: string) => agentMap[id] ?? id;
 
   const year  = current.getFullYear();
   const month = current.getMonth();
@@ -31,7 +60,7 @@ export default function CalendarPage() {
   const monthName   = current.toLocaleString("default", { month: "long", year: "numeric" });
   const pad = (d: number) =>
     `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  const tasks = calData[selected] ?? [];
+  const tasks: MyTask[] = calData[selected] ?? [];
 
   return (
     <div className="p-4 lg:p-6 max-w-screen-xl mx-auto">
@@ -105,9 +134,10 @@ export default function CalendarPage() {
           ) : (
             <div className="space-y-2.5">
               {tasks.map(t => (
-                <div
+                <button
                   key={t.id}
-                  className="flex items-start gap-3 p-3 rounded-lg
+                  onClick={() => setDetailTask(t)}
+                  className="w-full flex items-start gap-3 p-3 rounded-lg text-left
                     bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.04)]
                     hover:border-[rgba(0,212,255,0.15)] transition-colors"
                 >
@@ -120,7 +150,7 @@ export default function CalendarPage() {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-slate-200 text-sm font-medium leading-tight">{t.title}</p>
-                    <p className="text-slate-500 text-xs mt-1">{t.agent}</p>
+                    <p className="text-slate-500 text-xs mt-1">{agentName(t.createdByAgent)}</p>
                   </div>
                   <span
                     className={`${MONO} text-[11px] px-2 py-0.5 rounded-full border ${
@@ -133,12 +163,31 @@ export default function CalendarPage() {
                   >
                     {t.status}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {detailTask && (
+        <TaskDetailModal
+          task={detailTask}
+          agents={agents}
+          agentName={agentName}
+          onClose={() => setDetailTask(null)}
+          onPatched={(t) => {
+            setCalData(prev => {
+              const next = { ...prev };
+              for (const key of Object.keys(next)) {
+                next[key] = next[key].map(x => x.id === t.id ? t : x);
+              }
+              return next;
+            });
+            setDetailTask(t);
+          }}
+        />
+      )}
     </div>
   );
 }

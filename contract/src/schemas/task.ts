@@ -44,6 +44,12 @@ export const TaskPatchSchema = z.object({
 });
 export type TaskPatch = z.infer<typeof TaskPatchSchema>;
 
+export const TaskListQuerySchema = z.object({
+  dueDateFrom: z.string().optional(),
+  dueDateTo:   z.string().optional(),
+});
+export type TaskListQuery = z.infer<typeof TaskListQuerySchema>;
+
 export const TaskCreateSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),

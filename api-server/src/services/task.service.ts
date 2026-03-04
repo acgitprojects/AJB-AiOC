@@ -1,8 +1,8 @@
 import * as taskRepo from "../repositories/task.repository";
 import type { MyTask, TaskPatch, TaskCreate } from "@ajb/contract";
 
-export async function listTasks(): Promise<MyTask[]> {
-  return taskRepo.findAll();
+export async function listTasks(filters?: { dueDateFrom?: string; dueDateTo?: string }): Promise<MyTask[]> {
+  return taskRepo.findAll(filters);
 }
 
 export async function patchTask(

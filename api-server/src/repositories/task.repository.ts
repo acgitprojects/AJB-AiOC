@@ -38,8 +38,14 @@ function mapRow(row: Record<string, unknown>, delegations: TaskDelegation[] = []
   };
 }
 
-export async function findAll(): Promise<MyTask[]> {
-  const tasks = await sql<Record<string, unknown>[]>`SELECT * FROM tasks ORDER BY created_at`;
+export async function findAll(filters?: { dueDateFrom?: string; dueDateTo?: string }): Promise<MyTask[]> {
+  const tasks = await sql<Record<string, unknown>[]>`
+    SELECT * FROM tasks
+    WHERE TRUE
+    ${filters?.dueDateFrom ? sql`AND due_date >= ${filters.dueDateFrom}::date` : sql``}
+    ${filters?.dueDateTo   ? sql`AND due_date <= ${filters.dueDateTo}::date`   : sql``}
+    ORDER BY created_at
+  `;
   if (tasks.length === 0) return [];
 
   const ids = tasks.map((t: Record<string, unknown>) => t.id as string);

@@ -2,8 +2,8 @@ import { listTasks, patchTask, createTask } from "../services/task.service";
 import type { TaskPatch, TaskCreate } from "@ajb/contract";
 
 export const taskHandlers = {
-  list: async () => {
-    return { status: 200 as const, body: await listTasks() };
+  list: async ({ query }: { query: { dueDateFrom?: string; dueDateTo?: string } }) => {
+    return { status: 200 as const, body: await listTasks(query) };
   },
   create: async ({ body }: { body: TaskCreate }) => {
     const task = await createTask(body);
