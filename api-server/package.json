@@ -1,0 +1,22 @@
+{
+  "name": "@ajb/api-server",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "tsx --watch src/index.ts",
+    "build": "bun build src/index.ts --compile --target=bun --outfile=dist/server",
+    "start": "./dist/server"
+  },
+  "dependencies": {
+    "@ajb/contract": "*",
+    "@fastify/cors": "^9.0.1",
+    "@ts-rest/fastify": "^3.51.0",
+    "fastify": "^4.28.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}

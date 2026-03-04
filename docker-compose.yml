@@ -1,8 +1,22 @@
 services:
+  api-server:
+    build:
+      context: .
+      dockerfile: api-server/Dockerfile
+    expose:
+      - "3001"
+    environment:
+      PORT: "3001"
+      OPENCLAW_GATEWAY_URL: "${OPENCLAW_GATEWAY_URL:-http://localhost:18789}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-changeme}"
+    restart: unless-stopped
+
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
     ports:
       - "5100:80"
+    depends_on:
+      - api-server
     restart: unless-stopped
