@@ -4,11 +4,11 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   CheckSquare, List, Columns2, CalendarDays, Bot, User,
   CheckCircle2, Circle, Clock, ChevronDown, ChevronRight,
-  AlertCircle, ChevronLeft, Tag, Loader2,
+  AlertCircle, ChevronLeft, Tag, Loader2, X, Plus, Edit2,
 } from "lucide-react";
-import type { MyTask, TaskAssignee, TaskPatch } from "@ajb/contract";
-import { AGENTS } from "@/lib/mock-data";
+import type { MyTask, TaskAssignee, TaskPatch, TaskCreate, Agent } from "@ajb/contract";
 import { apiClient } from "@/lib/api-client";
+import { useToast } from "@/lib/toast";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -38,15 +38,6 @@ const KANBAN_COLS: { key: MyTask["status"]; label: string; accent: string }[] = 
 type View = "list" | "kanban" | "calendar";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function agentName(id: string) {
-  return AGENTS.find(a => a.id === id)?.name ?? id;
-}
-
-function agentInitials(id: string) {
-  const n = agentName(id);
-  return n.length >= 2 ? n.slice(0, 2).toUpperCase() : n.toUpperCase();
-}
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -101,9 +92,11 @@ function AssigneeBadge({ a }: { a: TaskAssignee }) {
 function AssignDropdown({
   task,
   onAssign,
+  agents,
 }: {
   task: MyTask;
   onAssign: (assignee: TaskAssignee) => void;
+  agents: Agent[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -111,7 +104,7 @@ function AssignDropdown({
     { type: "human", id: "andrew", name: "Andrew (Me)" },
     { type: "human", id: "team",   name: "Team" },
   ];
-  const agentAssignees: TaskAssignee[] = AGENTS.map(a => ({
+  const agentAssignees: TaskAssignee[] = agents.map(a => ({
     type: "agent" as const,
     id: a.id,
     name: a.name,
@@ -127,7 +120,7 @@ function AssignDropdown({
       </button>
       {open && (
         <div
-          className="absolute right-0 bottom-7 z-50 w-48 rounded-xl border border-[rgba(0,212,255,0.12)] bg-[#0a1628] shadow-xl p-1 animate-fade-in"
+          className="absolute right-0 bottom-7 z-[200] w-48 rounded-xl border border-[rgba(0,212,255,0.12)] bg-[#0a1628] shadow-xl p-1 animate-fade-in"
           onClick={e => e.stopPropagation()}
         >
           <p className={`${LABEL} px-2 pt-1 pb-0.5`}>Humans</p>
@@ -159,16 +152,472 @@ function AssignDropdown({
   );
 }
 
+// ─── Modal base ───────────────────────────────────────────────────────────────
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative glass rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto mx-4">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-200"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── Assignee picker (shared by modals) ──────────────────────────────────────
+
+function AssigneePicker({ value, onChange, agents }: { value: TaskAssignee; onChange: (a: TaskAssignee) => void; agents: Agent[] }) {
+  const humans: TaskAssignee[] = [
+    { type: "human", id: "andrew", name: "Andrew (Me)" },
+    { type: "human", id: "team",   name: "Team" },
+  ];
+  const all = [...humans, ...agents.map(a => ({ type: "agent" as const, id: a.id, name: a.name }))];
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {all.map(a => (
+        <button
+          key={a.id}
+          type="button"
+          onClick={() => onChange(a)}
+          className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs border transition-all ${
+            value.id === a.id
+              ? "border-[rgba(0,212,255,0.4)] bg-[rgba(0,212,255,0.08)] text-[#00d4ff]"
+              : "border-slate-700/40 text-slate-500 hover:text-slate-300"
+          }`}
+        >
+          {a.type === "agent" ? <Bot size={10} className="text-violet-400" /> : <User size={10} className="text-cyan-400" />}
+          {a.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Create task modal ────────────────────────────────────────────────────────
+
+function CreateTaskModal({ agents, onClose, onCreated }: {
+  agents: Agent[];
+  onClose: () => void;
+  onCreated: (t: MyTask) => void;
+}) {
+  const { toast } = useToast();
+  const [title, setTitle]               = useState("");
+  const [description, setDescription]   = useState("");
+  const [priority, setPriority]         = useState<MyTask["priority"]>("medium");
+  const [status, setStatus]             = useState<MyTask["status"]>("pending");
+  const [dueDate, setDueDate]           = useState("");
+  const [tags, setTags]                 = useState("");
+  const [createdByAgent, setCreatedByAgent] = useState(agents[0]?.id ?? "");
+  const [assignee, setAssignee]         = useState<TaskAssignee>({ type: "human", id: "andrew", name: "Andrew (Me)" });
+  const [error, setError]               = useState("");
+  const [saving, setSaving]             = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setSaving(true);
+    setError("");
+    try {
+      const body: TaskCreate = {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        createdByAgent,
+        assignee,
+        priority,
+        status,
+        dueDate: dueDate || undefined,
+        tags: tags ? tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+      };
+      const res = await apiClient.tasks.create({ body });
+      if (res.status === 201) {
+        toast("Task created", "success");
+        onCreated(res.body);
+        onClose();
+      } else {
+        setError("Failed to create task");
+        toast("Failed to create task", "error");
+      }
+    } catch {
+      setError("Failed to create task");
+      toast("Failed to create task", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="New Task" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1">
+          <label className={LABEL}>Title *</label>
+          <input
+            type="text"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            required
+            className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[rgba(0,212,255,0.4)]"
+            placeholder="Task title…"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className={LABEL}>Description</label>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            rows={2}
+            className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[rgba(0,212,255,0.4)] resize-none"
+            placeholder="Optional description…"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className={LABEL}>Priority</label>
+          <div className="flex gap-2">
+            {(["high", "medium", "low"] as const).map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPriority(p)}
+                className={`flex-1 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                  priority === p ? PRIORITY_CFG[p].bg : "border-slate-700/40 text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                {PRIORITY_CFG[p].label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className={LABEL}>Status</label>
+          <select
+            value={status}
+            onChange={e => setStatus(e.target.value as MyTask["status"])}
+            className="w-full bg-[#0a1628] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-[rgba(0,212,255,0.4)]"
+          >
+            <option value="pending">Pending</option>
+            <option value="in-progress">In Progress</option>
+            <option value="done">Done</option>
+            <option value="delegated">Delegated</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className={LABEL}>Assignee</label>
+          <AssigneePicker value={assignee} onChange={setAssignee} agents={agents} />
+        </div>
+
+        <div className="space-y-1">
+          <label className={LABEL}>Created by agent</label>
+          <select
+            value={createdByAgent}
+            onChange={e => setCreatedByAgent(e.target.value)}
+            className="w-full bg-[#0a1628] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-[rgba(0,212,255,0.4)]"
+          >
+            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className={LABEL}>Due date</label>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={e => setDueDate(e.target.value)}
+            className="w-full bg-[#0a1628] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-[rgba(0,212,255,0.4)]"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className={LABEL}>Tags (comma-separated)</label>
+          <input
+            type="text"
+            value={tags}
+            onChange={e => setTags(e.target.value)}
+            className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[rgba(0,212,255,0.4)]"
+            placeholder="e.g. urgent, review, bug"
+          />
+        </div>
+
+        {error && <p className="text-xs text-red-400">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !title.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-[rgba(0,212,255,0.12)] text-[#00d4ff] border border-[rgba(0,212,255,0.2)] hover:bg-[rgba(0,212,255,0.2)] transition-colors disabled:opacity-50"
+          >
+            {saving ? "Creating…" : "Create Task"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ─── Task detail modal ────────────────────────────────────────────────────────
+
+function TaskDetailModal({ task, agents, agentName, onClose, onPatched }: {
+  task: MyTask;
+  agents: Agent[];
+  agentName: (id: string) => string;
+  onClose: () => void;
+  onPatched: (t: MyTask) => void;
+}) {
+  const { toast } = useToast();
+  const [editing, setEditing]           = useState(false);
+  const [title, setTitle]               = useState(task.title);
+  const [description, setDescription]   = useState(task.description ?? "");
+  const [priority, setPriority]         = useState(task.priority);
+  const [status, setStatus]             = useState(task.status);
+  const [dueDate, setDueDate]           = useState(task.dueDate?.slice(0, 10) ?? "");
+  const [tags, setTags]                 = useState(task.tags.join(", "));
+  const [assignee, setAssignee]         = useState<TaskAssignee>(task.assignee);
+  const [saving, setSaving]             = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const body: TaskPatch = {
+        title: title.trim() || undefined,
+        description: description.trim() || undefined,
+        priority,
+        status,
+        dueDate: dueDate || undefined,
+        tags: tags ? tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+        assignee,
+      };
+      const res = await apiClient.tasks.patch({ params: { id: task.id }, body });
+      if (res.status === 200) {
+        toast("Task saved", "success");
+        onPatched(res.body);
+        setEditing(false);
+      } else {
+        toast("Failed to save", "error");
+      }
+    } catch {
+      toast("Failed to save", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <Modal title="Edit Task" onClose={onClose}>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label className={LABEL}>Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-[rgba(0,212,255,0.4)]"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className={LABEL}>Description</label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={2}
+              className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[rgba(0,212,255,0.4)] resize-none"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className={LABEL}>Priority</label>
+            <div className="flex gap-2">
+              {(["high", "medium", "low"] as const).map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPriority(p)}
+                  className={`flex-1 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    priority === p ? PRIORITY_CFG[p].bg : "border-slate-700/40 text-slate-500 hover:text-slate-300"
+                  }`}
+                >
+                  {PRIORITY_CFG[p].label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className={LABEL}>Status</label>
+            <select
+              value={status}
+              onChange={e => setStatus(e.target.value as MyTask["status"])}
+              className="w-full bg-[#0a1628] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-[rgba(0,212,255,0.4)]"
+            >
+              <option value="pending">Pending</option>
+              <option value="in-progress">In Progress</option>
+              <option value="done">Done</option>
+              <option value="delegated">Delegated</option>
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className={LABEL}>Assignee</label>
+            <AssigneePicker value={assignee} onChange={setAssignee} agents={agents} />
+          </div>
+
+          <div className="space-y-1">
+            <label className={LABEL}>Due date</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+              className="w-full bg-[#0a1628] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-[rgba(0,212,255,0.4)]"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className={LABEL}>Tags (comma-separated)</label>
+            <input
+              type="text"
+              value={tags}
+              onChange={e => setTags(e.target.value)}
+              className="w-full bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[rgba(0,212,255,0.4)]"
+              placeholder="e.g. urgent, review, bug"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-[rgba(0,212,255,0.12)] text-[#00d4ff] border border-[rgba(0,212,255,0.2)] hover:bg-[rgba(0,212,255,0.2)] transition-colors disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  // View mode
+  return (
+    <Modal title={task.title} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-2">
+            <PriorityBadge p={task.priority} />
+            <StatusBadge s={task.status} />
+          </div>
+          <button
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-100 border border-slate-700/40 hover:border-slate-600 transition-all"
+          >
+            <Edit2 size={12} /> Edit
+          </button>
+        </div>
+
+        {task.description && (
+          <p className="text-sm text-slate-400 leading-relaxed">{task.description}</p>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <p className={LABEL}>Assignee</p>
+            <AssigneeBadge a={task.assignee} />
+          </div>
+          <div className="space-y-1">
+            <p className={LABEL}>Created by</p>
+            <p className="text-xs text-slate-400 font-mono-jet">{agentName(task.createdByAgent)}</p>
+          </div>
+          {task.dueDate && (
+            <div className="space-y-1">
+              <p className={LABEL}>Due date</p>
+              <p className={`text-xs ${isOverdue(task) ? "text-red-400" : "text-slate-400"}`}>
+                {fmtDate(task.dueDate)}
+                {isOverdue(task) && " — Overdue"}
+              </p>
+            </div>
+          )}
+          <div className="space-y-1">
+            <p className={LABEL}>Created at</p>
+            <p className="text-xs text-slate-500 font-mono-jet">{fmtDate(task.createdAt)}</p>
+          </div>
+          {task.updatedAt && (
+            <div className="space-y-1">
+              <p className={LABEL}>Updated at</p>
+              <p className="text-xs text-slate-500 font-mono-jet">{fmtDate(task.updatedAt)}</p>
+            </div>
+          )}
+        </div>
+
+        {task.tags.length > 0 && (
+          <div className="space-y-1">
+            <p className={LABEL}>Tags</p>
+            <div className="flex flex-wrap gap-1.5">
+              {task.tags.map(t => (
+                <span key={t} className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs bg-slate-800/60 text-slate-400 border border-slate-700/30">
+                  <Tag size={9} />{t}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {task.delegations && task.delegations.length > 0 && (
+          <div className="space-y-1.5">
+            <p className={LABEL}>Delegations</p>
+            {task.delegations.map((d, i) => (
+              <div key={i} className="rounded-lg border border-[rgba(255,255,255,0.06)] px-3 py-2 text-xs text-slate-500 space-y-0.5">
+                <p>{d.from} → {d.to}</p>
+                {d.reason && <p className="text-slate-600">{d.reason}</p>}
+                <p className="font-mono-jet">{d.status} · {fmtDate(d.proposedAt)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Task row (list view) ─────────────────────────────────────────────────────
 
 function TaskRow({
   task,
   onToggle,
   onAssign,
+  onDetail,
+  agents,
 }: {
   task: MyTask;
   onToggle: (id: string, current: MyTask["status"]) => void;
   onAssign: (id: string, assignee: TaskAssignee) => void;
+  onDetail: (task: MyTask) => void;
+  agents: Agent[];
 }) {
   const overdue = isOverdue(task);
   return (
@@ -188,9 +637,12 @@ function TaskRow({
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2 mb-0.5">
           <PriorityDot p={task.priority} />
-          <span className={`text-sm font-medium ${task.status === "done" ? "line-through text-slate-500" : "text-slate-100"}`}>
+          <button
+            onClick={() => onDetail(task)}
+            className={`text-sm font-medium text-left hover:text-[#00d4ff] transition-colors ${task.status === "done" ? "line-through text-slate-500" : "text-slate-100"}`}
+          >
             {task.title}
-          </span>
+          </button>
           {overdue && task.status !== "done" && (
             <span className="flex items-center gap-0.5 text-xs text-red-400">
               <AlertCircle size={11} /> Overdue
@@ -218,7 +670,7 @@ function TaskRow({
 
       {/* Assign control — visible on row hover */}
       <div className="opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0 self-center">
-        <AssignDropdown task={task} onAssign={(a) => onAssign(task.id, a)} />
+        <AssignDropdown task={task} onAssign={(a) => onAssign(task.id, a)} agents={agents} />
       </div>
     </div>
   );
@@ -230,10 +682,16 @@ function KanbanCard({
   task,
   onMove,
   onAssign,
+  onDetail,
+  agents,
+  agentName,
 }: {
   task: MyTask;
   onMove: (id: string, status: MyTask["status"]) => void;
   onAssign: (id: string, assignee: TaskAssignee) => void;
+  onDetail: (task: MyTask) => void;
+  agents: Agent[];
+  agentName: (id: string) => string;
 }) {
   const overdue = isOverdue(task);
   const others = KANBAN_COLS.filter(c => c.key !== task.status);
@@ -243,9 +701,12 @@ function KanbanCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <PriorityDot p={task.priority} />
-          <span className={`text-sm font-medium leading-snug ${task.status === "done" ? "line-through text-slate-500" : "text-slate-100"}`}>
+          <button
+            onClick={() => onDetail(task)}
+            className={`text-sm font-medium text-left leading-snug hover:text-[#00d4ff] transition-colors ${task.status === "done" ? "line-through text-slate-500" : "text-slate-100"}`}
+          >
             {task.title}
-          </span>
+          </button>
         </div>
       </div>
 
@@ -274,7 +735,7 @@ function KanbanCard({
       <div className="flex items-center justify-between pt-1 border-t border-[rgba(255,255,255,0.05)]">
         <span className="text-xs text-slate-500 font-mono-jet">via {agentName(task.createdByAgent)}</span>
         <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
-          <AssignDropdown task={task} onAssign={(a) => onAssign(task.id, a)} />
+          <AssignDropdown task={task} onAssign={(a) => onAssign(task.id, a)} agents={agents} />
           {others.map(col => (
             <button
               key={col.key}
@@ -298,10 +759,18 @@ function ListView({
   tasks,
   onToggle,
   onAssign,
+  onDetail,
+  agents,
+  agentName,
+  agentInitials,
 }: {
   tasks: MyTask[];
   onToggle: (id: string, s: MyTask["status"]) => void;
   onAssign: (id: string, a: TaskAssignee) => void;
+  onDetail: (task: MyTask) => void;
+  agents: Agent[];
+  agentName: (id: string) => string;
+  agentInitials: (id: string) => string;
 }) {
   const grouped = useMemo(() => {
     const map: Record<string, MyTask[]> = {};
@@ -330,11 +799,11 @@ function ListView({
         const isOpen = !collapsed[agentId];
         const done = agentTasks.filter(t => t.status === "done").length;
         return (
-          <div key={agentId} className={`${GLASS} overflow-hidden`}>
+          <div key={agentId} className={GLASS}>
             {/* Group header */}
             <button
               onClick={() => toggle(agentId)}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[rgba(255,255,255,0.03)] transition-colors"
+              className="rounded-t-xl w-full flex items-center gap-3 px-4 py-3 hover:bg-[rgba(255,255,255,0.03)] transition-colors"
             >
               <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#00d4ff]/20 to-[#8b5cf6]/20 border border-[rgba(139,92,246,0.3)] flex items-center justify-center shrink-0">
                 <span className="text-xs font-bold text-violet-300 font-mono-jet">{agentInitials(agentId)}</span>
@@ -349,7 +818,7 @@ function ListView({
             {isOpen && (
               <div className="border-t border-[rgba(255,255,255,0.04)] divide-y divide-[rgba(255,255,255,0.03)]">
                 {agentTasks.map(t => (
-                  <TaskRow key={t.id} task={t} onToggle={onToggle} onAssign={onAssign} />
+                  <TaskRow key={t.id} task={t} onToggle={onToggle} onAssign={onAssign} onDetail={onDetail} agents={agents} />
                 ))}
               </div>
             )}
@@ -364,10 +833,16 @@ function KanbanView({
   tasks,
   onMove,
   onAssign,
+  onDetail,
+  agents,
+  agentName,
 }: {
   tasks: MyTask[];
   onMove: (id: string, s: MyTask["status"]) => void;
   onAssign: (id: string, a: TaskAssignee) => void;
+  onDetail: (task: MyTask) => void;
+  agents: Agent[];
+  agentName: (id: string) => string;
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -389,7 +864,7 @@ function KanbanView({
                 </div>
               ) : (
                 colTasks.map(t => (
-                  <KanbanCard key={t.id} task={t} onMove={onMove} onAssign={onAssign} />
+                  <KanbanCard key={t.id} task={t} onMove={onMove} onAssign={onAssign} onDetail={onDetail} agents={agents} agentName={agentName} />
                 ))
               )}
             </div>
@@ -400,7 +875,7 @@ function KanbanView({
   );
 }
 
-function CalendarView({ tasks }: { tasks: MyTask[] }) {
+function CalendarView({ tasks, agentName }: { tasks: MyTask[]; agentName: (id: string) => string }) {
   const now = new Date();
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -540,7 +1015,9 @@ function CalendarView({ tasks }: { tasks: MyTask[] }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MyTasksPage() {
+  const { toast } = useToast();
   const [tasks,   setTasks]   = useState<MyTask[]>([]);
+  const [agents,  setAgents]  = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [view,    setView]    = useState<View>("list");
 
@@ -549,11 +1026,17 @@ export default function MyTasksPage() {
   const [filterAgent,    setFilterAgent]    = useState("all");
   const [filterAssignee, setFilterAssignee] = useState("all");
 
+  const [createOpen, setCreateOpen]   = useState(false);
+  const [detailTask, setDetailTask]   = useState<MyTask | null>(null);
+
   // ── Fetch ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    apiClient.tasks.list()
-      .then((res) => { if (res.status === 200) setTasks(res.body); setLoading(false); })
-      .catch(() => setLoading(false));
+    Promise.all([apiClient.tasks.list(), apiClient.agents.list()])
+      .then(([tasksRes, agentsRes]) => {
+        if (tasksRes.status === 200) setTasks(tasksRes.body);
+        if (agentsRes.status === 200) setAgents(agentsRes.body);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   // ── Mutations ────────────────────────────────────────────────────────────
@@ -590,6 +1073,10 @@ export default function MyTasksPage() {
     patchTask(id, { assignee });
   }, [patchTask]);
 
+  const handleDetail = useCallback((task: MyTask) => {
+    setDetailTask(task);
+  }, []);
+
   // ── Filters ──────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     return tasks.filter(t => {
@@ -601,6 +1088,17 @@ export default function MyTasksPage() {
       return true;
     });
   }, [tasks, filterStatus, filterPriority, filterAgent, filterAssignee]);
+
+  // ── Agent helpers ────────────────────────────────────────────────────────
+  const agentMap = useMemo(
+    () => Object.fromEntries(agents.map(a => [a.id, a.name])),
+    [agents]
+  );
+  const agentName = (id: string) => agentMap[id] ?? id;
+  const agentInitials = (id: string) => {
+    const n = agentName(id);
+    return n.length >= 2 ? n.slice(0, 2).toUpperCase() : n.toUpperCase();
+  };
 
   // ── Stats ────────────────────────────────────────────────────────────────
   const total    = tasks.length;
@@ -646,20 +1144,28 @@ export default function MyTasksPage() {
           </div>
         </div>
 
-        {/* Stats row */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {[
-            { label: "Total",        val: total,   colour: "text-slate-300"  },
-            { label: "Pending",      val: pending, colour: "text-amber-400"  },
-            { label: "In Progress",  val: inProg,  colour: "text-[#00d4ff]" },
-            { label: "Done",         val: done,    colour: "text-[#10d6a0]" },
-            ...(overdue > 0 ? [{ label: "Overdue", val: overdue, colour: "text-red-400" }] : []),
-          ].map(s => (
-            <div key={s.label} className="text-center">
-              <div className={`text-lg font-bold font-mono-jet ${s.colour}`}>{s.val}</div>
-              <div className="text-[10px] text-slate-600 uppercase tracking-widest">{s.label}</div>
-            </div>
-          ))}
+        {/* Stats row + New Task button */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            {[
+              { label: "Total",        val: total,   colour: "text-slate-300"  },
+              { label: "Pending",      val: pending, colour: "text-amber-400"  },
+              { label: "In Progress",  val: inProg,  colour: "text-[#00d4ff]" },
+              { label: "Done",         val: done,    colour: "text-[#10d6a0]" },
+              ...(overdue > 0 ? [{ label: "Overdue", val: overdue, colour: "text-red-400" }] : []),
+            ].map(s => (
+              <div key={s.label} className="text-center">
+                <div className={`text-lg font-bold font-mono-jet ${s.colour}`}>{s.val}</div>
+                <div className="text-[10px] text-slate-600 uppercase tracking-widest">{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-[rgba(0,212,255,0.1)] text-[#00d4ff] border border-[rgba(0,212,255,0.2)] hover:bg-[rgba(0,212,255,0.18)] transition-all"
+          >
+            <Plus size={15} /> New Task
+          </button>
         </div>
       </div>
 
@@ -738,10 +1244,28 @@ export default function MyTasksPage() {
         </div>
       ) : (
         <>
-          {view === "list"     && <ListView     tasks={filtered} onToggle={handleToggle} onAssign={handleAssign} />}
-          {view === "kanban"   && <KanbanView   tasks={filtered} onMove={handleMove}     onAssign={handleAssign} />}
-          {view === "calendar" && <CalendarView tasks={filtered} />}
+          {view === "list"     && <ListView     tasks={filtered} onToggle={handleToggle} onAssign={handleAssign} onDetail={handleDetail} agents={agents} agentName={agentName} agentInitials={agentInitials} />}
+          {view === "kanban"   && <KanbanView   tasks={filtered} onMove={handleMove}     onAssign={handleAssign} onDetail={handleDetail} agents={agents} agentName={agentName} />}
+          {view === "calendar" && <CalendarView tasks={filtered} agentName={agentName} />}
         </>
+      )}
+
+      {/* ── Modals ──────────────────────────────────────────────────────────── */}
+      {createOpen && (
+        <CreateTaskModal
+          agents={agents}
+          onClose={() => setCreateOpen(false)}
+          onCreated={(t) => { setTasks(prev => [t, ...prev]); setCreateOpen(false); }}
+        />
+      )}
+      {detailTask && (
+        <TaskDetailModal
+          task={detailTask}
+          agents={agents}
+          agentName={agentName}
+          onClose={() => setDetailTask(null)}
+          onPatched={(t) => { setTasks(prev => prev.map(x => x.id === t.id ? t : x)); setDetailTask(t); }}
+        />
       )}
     </div>
   );
