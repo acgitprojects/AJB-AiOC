@@ -1,4 +1,4 @@
-i/**
+/**
  * app/api/delegations/[id]/approve/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * POST /api/delegations/[id]/approve    — target agent accepts delegation

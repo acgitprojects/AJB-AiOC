@@ -4,9 +4,9 @@ node_modules/
 .pnp.js
 
 # production
-/.next/
-/out/
-/.open-next/
+.next/
+out/
+.open-next/
 
 # Cloudflare env (copy from .env.production.example)
 .env.production
