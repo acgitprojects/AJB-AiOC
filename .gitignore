@@ -7,3 +7,8 @@ dist/
 .env
 .env.local
 .wrangler/
+
+# Test artifacts
+tests/screenshots/
+playwright-report/
+test-results/
