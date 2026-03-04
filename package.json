@@ -1,0 +1,10 @@
+{
+  "name": "ajb-aioc",
+  "private": true,
+  "workspaces": ["contract", "frontend", "api-server"],
+  "scripts": {
+    "typecheck": "tsc --build --noEmit",
+    "dev:api": "npm run dev --workspace=api-server",
+    "dev:frontend": "npm run dev --workspace=frontend"
+  }
+}
