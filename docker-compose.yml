@@ -1,4 +1,16 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_DB: aioc
+      POSTGRES_USER: aioc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   api-server:
     build:
       context: .
@@ -7,16 +19,33 @@ services:
       - "3001"
     environment:
       PORT: "3001"
+      DATABASE_URL: "postgresql://aioc:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/aioc"
       OPENCLAW_GATEWAY_URL: "${OPENCLAW_GATEWAY_URL:-http://localhost:18789}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-changeme}"
+    depends_on:
+      - postgres
     restart: unless-stopped
 
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+    expose:
+      - "80"
+    depends_on:
+      - api-server
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: nginx
+      dockerfile: Dockerfile
     ports:
       - "5100:80"
     depends_on:
       - api-server
+      - frontend
     restart: unless-stopped
+
+volumes:
+  postgres_data:

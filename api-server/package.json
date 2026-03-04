@@ -12,6 +12,7 @@
     "@fastify/cors": "^9.0.1",
     "@ts-rest/fastify": "^3.51.0",
     "fastify": "^4.28.0",
+    "postgres": "^3.4.8",
     "zod": "^3.23.0"
   },
   "devDependencies": {

@@ -5,6 +5,14 @@
   "scripts": {
     "typecheck": "tsc --build --noEmit",
     "dev:api": "npm run dev --workspace=api-server",
-    "dev:frontend": "npm run dev --workspace=frontend"
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "test": "bash run_tests.sh",
+    "test:unit": "bun test api-server/tests/unit --timeout 10000",
+    "test:e2e": "bun test tests/e2e --timeout 120000",
+    "test:frontend": "bun test tests/frontend --timeout 300000"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.10",
+    "playwright": "^1.58.2"
   }
 }
