@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useRef } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 type ToastType = "success" | "error" | "info";
@@ -31,7 +32,7 @@ const TYPE_STYLES: Record<ToastType, string> = {
 
 function ToastContainer({ items, onDismiss }: { items: ToastItem[]; onDismiss: (id: string) => void }) {
   return (
-    <div className="fixed top-5 right-5 z-[300] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed top-5 left-1/2 flex flex-col gap-2 pointer-events-none items-center" style={{ zIndex: 99999, transform: "translateX(-50%)" }}>
       {items.map(item => (
         <div
           key={item.id}
@@ -69,10 +70,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     timers.current.set(id, t);
   }, [dismiss]);
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <ToastContainer items={items} onDismiss={dismiss} />
+      {mounted && createPortal(
+        <ToastContainer items={items} onDismiss={dismiss} />,
+        document.body,
+      )}
     </ToastContext.Provider>
   );
 }
