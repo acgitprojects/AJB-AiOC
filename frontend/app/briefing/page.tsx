@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   RefreshCw, Mail, CalendarDays, CheckSquare, Newspaper, TrendingUp, ChevronDown,
 } from "lucide-react";
-import type { DailyBriefing, BriefingSection } from "@/lib/mock-briefing";
+import type { DailyBriefing, BriefingSection } from "@ajb/contract";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 const GLASS = "glass glass-hover rounded-xl shadow-card";

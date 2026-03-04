@@ -10,7 +10,7 @@ import {
   TrendingUp, Users, Zap, RefreshCw, Mail, CalendarDays, CheckSquare, Newspaper,
   CheckCheck, Activity, ArrowUpRight, ArrowDownRight, ChevronDown,
 } from "lucide-react";
-import type { DailyBriefing, BriefingSection } from "@/lib/mock-briefing";
+import type { DailyBriefing, BriefingSection } from "@ajb/contract";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const GLASS  = "glass glass-hover rounded-xl p-5 shadow-card";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { type CalTask } from "@/lib/mock-data";
+import { type CalTask } from "@ajb/contract";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const GLASS = "glass glass-hover rounded-xl p-5 shadow-card";

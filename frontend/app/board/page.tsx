@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { type KanbanTask } from "@/lib/mock-data";
+import { type KanbanTask } from "@ajb/contract";
 import { Loader2 } from "lucide-react";
 
 const GLASS = "glass glass-hover rounded-xl p-5 shadow-card";

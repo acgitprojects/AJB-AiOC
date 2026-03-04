@@ -6,8 +6,9 @@ import {
   CheckCircle2, Circle, Clock, ChevronDown, ChevronRight,
   AlertCircle, ChevronLeft, Tag, Loader2,
 } from "lucide-react";
-import type { MyTask, TaskAssignee } from "@/lib/mock-data";
+import type { MyTask, TaskAssignee, TaskPatch } from "@ajb/contract";
 import { AGENTS } from "@/lib/mock-data";
+import { apiClient } from "@/lib/api-client";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -550,9 +551,8 @@ export default function MyTasksPage() {
 
   // ── Fetch ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    fetch("/api/tasks")
-      .then(r => r.json())
-      .then((d: MyTask[]) => { setTasks(d); setLoading(false); })
+    apiClient.tasks.list()
+      .then((res) => { if (res.status === 200) setTasks(res.body); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
@@ -561,11 +561,17 @@ export default function MyTasksPage() {
     // Optimistic update
     setTasks(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
     try {
-      await fetch(`/api/tasks/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
+      const { status, priority, title, description, dueDate, assignee, tags } = patch;
+      const body: TaskPatch = {
+        ...(status !== undefined && { status }),
+        ...(priority !== undefined && { priority }),
+        ...(title !== undefined && { title }),
+        ...(description !== undefined && { description }),
+        ...(dueDate !== undefined && { dueDate }),
+        ...(assignee !== undefined && { assignee }),
+        ...(tags !== undefined && { tags }),
+      };
+      await apiClient.tasks.patch({ params: { id }, body });
     } catch {
       // Silent — optimistic state already applied
     }

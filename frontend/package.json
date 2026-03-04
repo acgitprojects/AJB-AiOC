@@ -13,11 +13,14 @@
     "deploy:cf": "opennextjs-cloudflare build && npm run fix:wrangler-config && opennextjs-cloudflare deploy"
   },
   "dependencies": {
+    "@ajb/contract": "*",
+    "@ts-rest/core": "^3.51.0",
     "lucide-react": "^0.441.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^2.12.0"
+    "recharts": "^2.12.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.17.1",

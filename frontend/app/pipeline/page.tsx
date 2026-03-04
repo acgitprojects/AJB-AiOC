@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { type PipelineItem } from "@/lib/mock-data";
+import { type PipelineItem } from "@ajb/contract";
 import { Loader2 } from "lucide-react";
 
 const GLASS = "glass glass-hover rounded-xl p-5 shadow-card";
