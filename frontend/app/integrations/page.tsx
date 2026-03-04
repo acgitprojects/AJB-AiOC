@@ -2,7 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { CheckCircle2, Clock4, MessageSquare, ExternalLink, Info, Radio, Loader2, AlertTriangle } from "lucide-react";
-import type { GatewayStatusAPIResponse } from "@/app/api/openclaw/status/route";
+type GatewayStatusAPIResponse = {
+  connected: boolean;
+  gatewayUrl: string;
+  viaApiServer: boolean;
+  checkedAt: string;
+  version?: string;
+  channels?: string[];
+  error?: string;
+};
 
 // ── data ──────────────────────────────────────────────────────────────────────
 
