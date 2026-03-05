@@ -1,6 +1,7 @@
 import type { GatewayStatus, OcAgent } from "@ajb/contract";
 import { ocWsRequest } from "../lib/openclaw-ws";
 import * as configRepo from "../repositories/openclaw-config.repository";
+import { SKILL_WORD, SKILL_EXCEL, SKILL_PPT } from "../lib/skills-content";
 
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL ?? "http://localhost:18789";
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN ?? "";
@@ -177,6 +178,36 @@ export const openclawHandlers = {
         model: cfg?.model,
         tools: cfg?.tools,
       } };
+    },
+
+    installSkills: async ({ params }: { params: { id: string } }) => {
+      try {
+        await Promise.all([
+          ocWsRequest("agents.files.set", {
+            agentId: params.id,
+            name: "skills/create-word-document/SKILL.md",
+            content: SKILL_WORD,
+          }),
+          ocWsRequest("agents.files.set", {
+            agentId: params.id,
+            name: "skills/create-excel-spreadsheet/SKILL.md",
+            content: SKILL_EXCEL,
+          }),
+          ocWsRequest("agents.files.set", {
+            agentId: params.id,
+            name: "skills/create-presentation/SKILL.md",
+            content: SKILL_PPT,
+          }),
+        ]);
+        await configRepo.upsert(
+          params.id,
+          undefined,
+          ["create-word-document", "create-excel-spreadsheet", "create-presentation"],
+        );
+        return { status: 200 as const, body: { ok: true } };
+      } catch (e) {
+        return { status: 400 as const, body: { error: String(e) } };
+      }
     },
 
     delete: async ({ params }: { params: { id: string } }) => {

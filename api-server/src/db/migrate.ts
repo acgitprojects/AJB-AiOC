@@ -67,6 +67,23 @@ CREATE TABLE IF NOT EXISTS openclaw_agent_config (
 
 -- Drop FK so tasks can reference agent IDs that no longer live in Postgres
 ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_created_by_agent_fkey;
+
+CREATE TABLE IF NOT EXISTS document_jobs (
+  id             TEXT PRIMARY KEY,
+  type           TEXT NOT NULL CHECK (type IN ('word', 'excel', 'ppt')),
+  title          TEXT,
+  prompt         TEXT NOT NULL,
+  status         TEXT NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+  agent_id       TEXT,
+  session_key    TEXT UNIQUE,
+  agent_messages JSONB NOT NULL DEFAULT '[]',
+  file_name      TEXT,
+  file_data_b64  TEXT,
+  error_msg      TEXT,
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  completed_at   TIMESTAMPTZ
+);
 `;
 
 export async function migrate(): Promise<void> {

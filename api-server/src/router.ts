@@ -10,6 +10,7 @@ import { boardHandlers } from "./routes/board";
 import { pipelineHandlers } from "./routes/pipeline";
 import { calendarHandlers } from "./routes/calendar";
 import { userHandlers } from "./routes/users";
+import { documentHandlers } from "./routes/documents";
 
 const s = initServer();
 
@@ -24,4 +25,5 @@ export const appRouter = s.router(contract, {
   pipeline: pipelineHandlers,
   calendar: calendarHandlers,
   users: userHandlers,
+  documents: documentHandlers,
 });

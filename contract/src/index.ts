@@ -5,6 +5,7 @@ export * from "./schemas/board";
 export * from "./schemas/briefing";
 export * from "./schemas/calendar";
 export * from "./schemas/dashboard";
+export * from "./schemas/document";
 export * from "./schemas/openclaw";
 export * from "./schemas/pipeline";
 export * from "./schemas/task";

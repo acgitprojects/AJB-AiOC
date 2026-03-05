@@ -2,12 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { apiClient } from "@/lib/api-client";
-import type { OcAgent } from "@ajb/contract";
+import type { OcAgent, DocumentJob } from "@ajb/contract";
 import { OpenClawWSClient } from "@/lib/openclaw";
 import type { WSFrame } from "@/lib/openclaw";
 import {
   Send, Bot, FileText, Image, FileSpreadsheet,
-  Presentation, Download, Sparkles, Wifi, WifiOff, RotateCcw,
+  Presentation, Download, Sparkles, Wifi, WifiOff, RotateCcw, Settings,
 } from "lucide-react";
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -45,9 +45,7 @@ function normalizeHistoryMessage(raw: unknown): Message | null {
   };
 }
 
-function Chat() {
-  const [ocAgents, setOcAgents]       = useState<OcAgent[]>([]);
-  const [agentsLoading, setAgLoading] = useState(true);
+function Chat({ ocAgents, agentsLoading }: { ocAgents: OcAgent[]; agentsLoading: boolean }) {
   const [agent, setAgent]             = useState<OcAgent | null>(null);
   const [agentMessages, setAgentMessages] = useState<Map<string, Message[]>>(new Map());
   const [input, setInput] = useState("");
@@ -70,17 +68,10 @@ function Chat() {
   // Keep agentRef in sync so handleEvent can read current agent without deps
   useEffect(() => { agentRef.current = agent; }, [agent]);
 
-  // ── Load real agents ─────────────────────────────────────────────────────
+  // ── Set default agent when list loads ────────────────────────────────────
   useEffect(() => {
-    apiClient.openclaw.agents.list()
-      .then(res => {
-        if (res.status === 200 && res.body.length > 0) {
-          setOcAgents(res.body);
-          setAgent(res.body[0]);
-        }
-      })
-      .finally(() => setAgLoading(false));
-  }, []);
+    if (!agent && ocAgents.length > 0) setAgent(ocAgents[0]);
+  }, [ocAgents, agent]);
 
   // ── WebSocket lifecycle ──────────────────────────────────────────────────
   const handleEvent = useCallback((frame: WSFrame) => {
@@ -95,8 +86,10 @@ function Chat() {
     if (!payload) return;
 
     // Filter events to the current agent's session (mirrors OpenClaw UI handleChatEvent)
-    if (payload.sessionKey && agentRef.current &&
-        !payload.sessionKey.startsWith(`agent:${agentRef.current.id}:`)) return;
+    if (payload.sessionKey && agentRef.current && (
+        !payload.sessionKey.startsWith(`agent:${agentRef.current.id}:`) ||
+        payload.sessionKey.includes(":doc-")
+    )) return;
 
     const extractText = (msg: typeof payload.message): string => {
       if (!msg) return "";
@@ -367,40 +360,109 @@ function Chat() {
 // ── Create Document ───────────────────────────────────────────────────────────
 
 const DOC_TYPES = [
-  { key: "word",  label: "Word Doc",     icon: FileText,        ext: ".docx", color: "bg-blue-500/20 text-blue-400",    border: "border-blue-500/50" },
-  { key: "excel", label: "Spreadsheet",  icon: FileSpreadsheet, ext: ".xlsx", color: "bg-emerald-500/20 text-emerald-400", border: "border-emerald-500/50" },
-  { key: "ppt",   label: "Presentation", icon: Presentation,    ext: ".pptx", color: "bg-orange-500/20 text-orange-400", border: "border-orange-500/50" },
+  { key: "word"  as const, label: "Word Doc",     icon: FileText,        ext: ".docx", color: "bg-blue-500/20 text-blue-400",       border: "border-blue-500/50" },
+  { key: "excel" as const, label: "Spreadsheet",  icon: FileSpreadsheet, ext: ".xlsx", color: "bg-emerald-500/20 text-emerald-400", border: "border-emerald-500/50" },
+  { key: "ppt"   as const, label: "Presentation", icon: Presentation,    ext: ".pptx", color: "bg-orange-500/20 text-orange-400",   border: "border-orange-500/50" },
 ];
 
-function CreateDocument() {
-  const [docType, setDocType] = useState(DOC_TYPES[0]);
-  const [prompt,     setPrompt]     = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [result,     setResult]     = useState<{ ok: boolean; message: string } | null>(null);
+const MIME_TYPES: Record<string, string> = {
+  word:  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  excel: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt:   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
 
-  const generate = async () => {
-    if (!prompt.trim() || generating) return;
-    setGenerating(true);
-    setResult(null);
+const STATUS_STYLES: Record<string, string> = {
+  pending:    "bg-slate-700/40 text-slate-400",
+  processing: "bg-amber-500/20 text-amber-400 animate-pulse",
+  completed:  "bg-emerald-500/20 text-emerald-400",
+  failed:     "bg-red-500/20 text-red-400",
+};
+
+function downloadJob(job: DocumentJob) {
+  const bytes = Uint8Array.from(atob(job.fileDataB64!), c => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: MIME_TYPES[job.type] });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = job.fileName!;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function CreateDocument({ ocAgents }: { ocAgents: OcAgent[] }) {
+  const [docType,    setDocType]    = useState(DOC_TYPES[0]);
+  const [prompt,     setPrompt]     = useState("");
+  const [title,      setTitle]      = useState("");
+  const [agentId,    setAgentId]    = useState(ocAgents[0]?.id ?? "");
+  const [jobs,       setJobs]       = useState<DocumentJob[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitErr,  setSubmitErr]  = useState<string | null>(null);
+
+  // Skills setup state
+  const [skillAgentId,  setSkillAgentId]  = useState(ocAgents[0]?.id ?? "");
+  const [skillResult,   setSkillResult]   = useState<string | null>(null);
+  const [skillWorking,  setSkillWorking]  = useState(false);
+
+  // Keep agentId in sync when agents load
+  useEffect(() => {
+    if (!agentId && ocAgents.length > 0) setAgentId(ocAgents[0].id);
+    if (!skillAgentId && ocAgents.length > 0) setSkillAgentId(ocAgents[0].id);
+  }, [ocAgents, agentId, skillAgentId]);
+
+  // Poll jobs every 2s
+  useEffect(() => {
+    const fetchJobs = async () => {
+      const res = await apiClient.documents.list().catch(() => null);
+      if (res?.status === 200) setJobs(res.body);
+    };
+    fetchJobs();
+    const timer = setInterval(fetchJobs, 2000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const submit = async () => {
+    if (!prompt.trim() || !agentId || submitting) return;
+    setSubmitting(true);
+    setSubmitErr(null);
     try {
-      const res = await fetch("/api/chat", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: `Create a ${docType.label} (${docType.ext}) for me:\n\n${prompt}\n\nFormat it professionally, include all relevant sections, and return the content clearly structured.`,
-          agentId: "maya",
-        }),
+      const res = await apiClient.documents.create({
+        body: {
+          type: docType.key,
+          title: title.trim() || undefined,
+          prompt: prompt.trim(),
+          agentId,
+        },
       });
-      if (res.ok || res.status === 202) {
-        setResult({ ok: true, message: `Request sent to Maya. Switch to the Chat tab — Maya will reply with your ${docType.label} shortly.` });
+      if (res.status === 201) {
+        setJobs(prev => [res.body, ...prev]);
+        setPrompt("");
+        setTitle("");
       } else {
-        const body = await res.json().catch(() => ({})) as { error?: string };
-        setResult({ ok: false, message: `Failed to reach agent: ${body.error ?? res.status}` });
+        setSubmitErr("Failed to create document job");
       }
     } catch {
-      setResult({ ok: false, message: "Network error — could not reach the OpenClaw gateway." });
+      setSubmitErr("Network error");
     }
-    setGenerating(false);
+    setSubmitting(false);
+  };
+
+  const installSkills = async () => {
+    if (!skillAgentId || skillWorking) return;
+    setSkillWorking(true);
+    setSkillResult(null);
+    try {
+      const res = await apiClient.openclaw.agents.installSkills({
+        params: { id: skillAgentId },
+      });
+      if (res.status === 200) {
+        setSkillResult("Skills installed successfully.");
+      } else {
+        setSkillResult(`Failed: ${(res.body as { error?: string }).error ?? "unknown error"}`);
+      }
+    } catch {
+      setSkillResult("Network error installing skills");
+    }
+    setSkillWorking(false);
   };
 
   return (
@@ -419,13 +481,39 @@ function CreateDocument() {
                   : "border-navy-700 text-slate-400 hover:border-navy-600 bg-navy-900/40"
                 }`}
             >
-              <span className={`p-1.5 rounded-lg ${dt.color}`}>
-                <dt.icon size={16} />
-              </span>
+              <span className={`p-1.5 rounded-lg ${dt.color}`}><dt.icon size={16} /></span>
               {dt.label}
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Agent picker */}
+      <div>
+        <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-widest">Agent</p>
+        <select
+          value={agentId}
+          onChange={e => setAgentId(e.target.value)}
+          className="text-sm bg-navy-900/70 border border-navy-700 rounded-xl px-3 py-2 text-slate-200
+            focus:outline-none focus:border-arc-cyan/60 transition-all"
+        >
+          {ocAgents.map(a => (
+            <option key={a.id} value={a.id}>{a.emoji ? `${a.emoji} ` : ""}{a.name ?? a.id}</option>
+          ))}
+          {ocAgents.length === 0 && <option value="">No agents available</option>}
+        </select>
+      </div>
+
+      {/* Title */}
+      <div>
+        <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-widest">Title (optional)</p>
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder={`e.g. "Q1 Finance Report"`}
+          className="w-full text-sm bg-navy-900/70 border border-navy-700 rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-600
+            focus:outline-none focus:border-arc-cyan/60 focus:shadow-[0_0_0_3px_rgba(0,212,255,0.15)] transition-all"
+        />
       </div>
 
       {/* Prompt */}
@@ -442,29 +530,108 @@ function CreateDocument() {
       </div>
 
       <button
-        onClick={generate}
-        disabled={generating || !prompt.trim()}
+        onClick={submit}
+        disabled={submitting || !prompt.trim() || !agentId}
         className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all duration-200
-          ${generating || !prompt.trim()
+          ${submitting || !prompt.trim() || !agentId
             ? "bg-navy-800 text-slate-600 cursor-not-allowed border border-navy-700"
             : "bg-arc-cyan/20 text-arc-cyan border border-arc-cyan/50 hover:bg-arc-cyan/30 hover:shadow-glow-cyan"
           }`}
       >
-        {generating
-          ? <><span className="w-4 h-4 border-2 border-arc-cyan/40 border-t-arc-cyan rounded-full animate-spin" /> Generating…</>
+        {submitting
+          ? <><span className="w-4 h-4 border-2 border-arc-cyan/40 border-t-arc-cyan rounded-full animate-spin" /> Submitting…</>
           : <><Sparkles size={16} /> Generate {docType.label}</>
         }
       </button>
 
-      {result && (
-        <div className={`glass rounded-xl p-4 animate-fade-in border ${
-          result.ok ? "border-[#10d6a0]/30" : "border-red-500/30"
-        }`}>
-          <p className={`text-xs whitespace-pre-wrap font-mono-jet ${
-            result.ok ? "text-[#10d6a0]" : "text-red-400"
-          }`}>{result.message}</p>
+      {submitErr && (
+        <p className="text-xs text-red-400 font-mono-jet">{submitErr}</p>
+      )}
+
+      {/* Job list */}
+      {jobs.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">Document Jobs</p>
+          {jobs.map(job => {
+            const dt = DOC_TYPES.find(d => d.key === job.type) ?? DOC_TYPES[0];
+            const lastMsg = job.agentMessages.at(-1);
+            return (
+              <div key={job.id} className="rounded-xl border border-navy-700 bg-navy-900/50 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className={`p-1.5 rounded-lg ${dt.color}`}><dt.icon size={14} /></span>
+                  <span className="text-sm font-medium text-slate-200 flex-1 truncate">
+                    {job.fileName ?? job.title ?? `${dt.label} job`}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[job.status]}`}>
+                    {job.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 truncate">{job.prompt}</p>
+                {lastMsg && (
+                  <p className="text-xs text-slate-400 italic leading-relaxed line-clamp-2">
+                    {lastMsg.text}
+                  </p>
+                )}
+                {job.status === "failed" && job.errorMsg && (
+                  <p className="text-xs text-red-400 font-mono-jet">{job.errorMsg}</p>
+                )}
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => downloadJob(job)}
+                    disabled={job.status !== "completed" || !job.fileDataB64}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-all duration-200
+                      border-arc-cyan/50 text-arc-cyan hover:bg-arc-cyan/10
+                      disabled:opacity-30 disabled:cursor-not-allowed disabled:border-navy-700 disabled:text-slate-600"
+                  >
+                    <Download size={12} /> Download
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {/* Agent Skills Setup */}
+      <details className="border border-navy-700 rounded-xl p-4">
+        <summary className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
+          <Settings size={12} /> Agent Skills Setup
+        </summary>
+        <div className="mt-3 space-y-3">
+          <p className="text-xs text-slate-500">
+            Install document skills into an agent&apos;s workspace so it understands how to format replies for document generation.
+          </p>
+          <div className="flex items-center gap-3">
+            <select
+              value={skillAgentId}
+              onChange={e => setSkillAgentId(e.target.value)}
+              className="text-sm bg-navy-900/70 border border-navy-700 rounded-xl px-3 py-2 text-slate-200
+                focus:outline-none focus:border-arc-cyan/60 transition-all flex-1"
+            >
+              {ocAgents.map(a => (
+                <option key={a.id} value={a.id}>{a.emoji ? `${a.emoji} ` : ""}{a.name ?? a.id}</option>
+              ))}
+              {ocAgents.length === 0 && <option value="">No agents available</option>}
+            </select>
+            <button
+              onClick={installSkills}
+              disabled={skillWorking || !skillAgentId}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg border border-arc-cyan/50 text-arc-cyan
+                hover:bg-arc-cyan/10 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {skillWorking
+                ? <><span className="w-3 h-3 border border-arc-cyan/40 border-t-arc-cyan rounded-full animate-spin" /> Installing…</>
+                : "Install Skills"
+              }
+            </button>
+          </div>
+          {skillResult && (
+            <p className={`text-xs font-mono-jet ${skillResult.startsWith("Skills") ? "text-emerald-400" : "text-red-400"}`}>
+              {skillResult}
+            </p>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
@@ -588,6 +755,16 @@ const TABS = [
 
 export default function AgentPage() {
   const [tab, setTab] = useState("chat");
+  const [ocAgents, setOcAgents]       = useState<OcAgent[]>([]);
+  const [agentsLoading, setAgLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.openclaw.agents.list()
+      .then(res => {
+        if (res.status === 200) setOcAgents(res.body);
+      })
+      .finally(() => setAgLoading(false));
+  }, []);
 
   return (
     <div className="p-4 lg:p-6 max-w-screen-xl mx-auto">
@@ -617,8 +794,8 @@ export default function AgentPage() {
         ))}
       </div>
 
-      {tab === "chat"     && <Chat />}
-      {tab === "document" && <CreateDocument />}
+      {tab === "chat"     && <Chat ocAgents={ocAgents} agentsLoading={agentsLoading} />}
+      {tab === "document" && <CreateDocument ocAgents={ocAgents} />}
       {tab === "image"    && <CreateImage />}
     </div>
   );

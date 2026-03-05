@@ -35,6 +35,7 @@ import {
   AlertBodySchema,
   AlertResultSchema,
 } from "./schemas/users";
+import { DocumentJobSchema, DocumentCreateSchema } from "./schemas/document";
 
 const c = initContract();
 
@@ -177,11 +178,44 @@ export const contract = c.router({
         pathParams: z.object({ id: z.string() }),
         responses: { 200: z.array(OcAgentFileSchema) },
       },
+      installSkills: {
+        method: "POST",
+        path: "/api/openclaw/agents/:id/skills",
+        pathParams: z.object({ id: z.string() }),
+        body: c.noBody(),
+        responses: {
+          200: z.object({ ok: z.boolean() }),
+          400: z.object({ error: z.string() }),
+        },
+      },
     }),
     models: {
       method: "GET",
       path: "/api/openclaw/models",
       responses: { 200: z.array(OcModelSchema) },
+    },
+  }),
+
+  documents: c.router({
+    create: {
+      method: "POST",
+      path: "/api/documents",
+      body: DocumentCreateSchema,
+      responses: { 201: DocumentJobSchema },
+    },
+    list: {
+      method: "GET",
+      path: "/api/documents",
+      responses: { 200: z.array(DocumentJobSchema) },
+    },
+    get: {
+      method: "GET",
+      path: "/api/documents/:id",
+      pathParams: z.object({ id: z.string() }),
+      responses: {
+        200: DocumentJobSchema,
+        404: z.object({ message: z.string() }),
+      },
     },
   }),
 
