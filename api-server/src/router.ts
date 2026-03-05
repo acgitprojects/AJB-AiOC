@@ -1,6 +1,8 @@
 import { initServer } from "@ts-rest/fastify";
 import { contract } from "@ajb/contract";
 import { taskHandlers } from "./routes/tasks";
+import { taskCommentHandlers } from "./routes/task-comments";
+import { taskFileHandlers } from "./routes/task-files";
 import { agentHandlers } from "./routes/agents";
 import { dashboardHandlers } from "./routes/dashboard";
 import { briefingHandlers } from "./routes/briefing";
@@ -15,7 +17,7 @@ import { documentHandlers } from "./routes/documents";
 const s = initServer();
 
 export const appRouter = s.router(contract, {
-  tasks: taskHandlers,
+  tasks: { ...taskHandlers, comments: taskCommentHandlers, files: taskFileHandlers },
   agents: agentHandlers,
   dashboard: dashboardHandlers,
   briefing: briefingHandlers,

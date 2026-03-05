@@ -1,6 +1,8 @@
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
 import { MyTaskSchema, TaskPatchSchema, TaskCreateSchema, TaskListQuerySchema } from "./schemas/task";
+import { TaskCommentSchema, TaskCommentCreateSchema } from "./schemas/task-comment";
+import { TaskFileSchema, TaskFileUploadSchema, TaskFileLinkDocumentSchema } from "./schemas/task-file";
 import { AgentSchema } from "./schemas/agent";
 import { DailyBriefingSchema } from "./schemas/briefing";
 import { DashboardStatsSchema } from "./schemas/dashboard";
@@ -63,6 +65,71 @@ export const contract = c.router({
         404: z.object({ message: z.string() }),
       },
     },
+
+    comments: c.router({
+      list: {
+        method: "GET",
+        path: "/api/tasks/:id/comments",
+        pathParams: z.object({ id: z.string() }),
+        responses: { 200: z.array(TaskCommentSchema) },
+      },
+      create: {
+        method: "POST",
+        path: "/api/tasks/:id/comments",
+        pathParams: z.object({ id: z.string() }),
+        body: TaskCommentCreateSchema,
+        responses: { 201: TaskCommentSchema },
+      },
+      delete: {
+        method: "DELETE",
+        path: "/api/tasks/:id/comments/:commentId",
+        pathParams: z.object({ id: z.string(), commentId: z.string() }),
+        body: c.noBody(),
+        responses: {
+          200: OkResponseSchema,
+          404: z.object({ message: z.string() }),
+        },
+      },
+    }),
+
+    files: c.router({
+      list: {
+        method: "GET",
+        path: "/api/tasks/:id/files",
+        pathParams: z.object({ id: z.string() }),
+        responses: { 200: z.array(TaskFileSchema) },
+      },
+      upload: {
+        method: "POST",
+        path: "/api/tasks/:id/files",
+        pathParams: z.object({ id: z.string() }),
+        body: TaskFileUploadSchema,
+        responses: {
+          201: TaskFileSchema,
+          400: z.object({ error: z.string() }),
+        },
+      },
+      delete: {
+        method: "DELETE",
+        path: "/api/tasks/:id/files/:fileId",
+        pathParams: z.object({ id: z.string(), fileId: z.string() }),
+        body: c.noBody(),
+        responses: {
+          200: OkResponseSchema,
+          404: z.object({ message: z.string() }),
+        },
+      },
+      linkDocument: {
+        method: "POST",
+        path: "/api/tasks/:id/files/link-document",
+        pathParams: z.object({ id: z.string() }),
+        body: TaskFileLinkDocumentSchema,
+        responses: {
+          201: TaskFileSchema,
+          400: z.object({ error: z.string() }),
+        },
+      },
+    }),
   }),
 
   agents: c.router({

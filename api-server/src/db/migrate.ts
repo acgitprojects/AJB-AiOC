@@ -84,6 +84,29 @@ CREATE TABLE IF NOT EXISTS document_jobs (
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   completed_at   TIMESTAMPTZ
 );
+
+CREATE TABLE IF NOT EXISTS task_comments (
+  id           TEXT PRIMARY KEY,
+  task_id      TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  author_type  TEXT NOT NULL CHECK (author_type IN ('human', 'agent')),
+  author_id    TEXT NOT NULL,
+  author_name  TEXT NOT NULL,
+  content      TEXT NOT NULL,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS task_files (
+  id               TEXT PRIMARY KEY,
+  task_id          TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  file_name        TEXT NOT NULL,
+  file_type        TEXT NOT NULL,
+  file_size_bytes  INTEGER,
+  file_data_b64    TEXT NOT NULL,
+  uploaded_by      TEXT NOT NULL,
+  uploaded_by_name TEXT NOT NULL,
+  document_job_id  TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+);
 `;
 
 export async function migrate(): Promise<void> {

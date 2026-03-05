@@ -9,4 +9,6 @@ export * from "./schemas/document";
 export * from "./schemas/openclaw";
 export * from "./schemas/pipeline";
 export * from "./schemas/task";
+export * from "./schemas/task-comment";
+export * from "./schemas/task-file";
 export * from "./schemas/users";
