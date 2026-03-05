@@ -383,6 +383,18 @@ export class OpenClawWSClient {
     });
   }
 
+  /**
+   * Send a generic request to OpenClaw and return the response frame.
+   * Useful for methods like `chat.history` that don't have a dedicated wrapper.
+   */
+  request<T = unknown>(method: string, params: Record<string, unknown>): Promise<WSFrame & { payload?: T }> {
+    const id = String(++this.requestCounter);
+    return new Promise((resolve) => {
+      this.pendingRequests.set(id, resolve as (frame: WSFrame) => void);
+      this.sendRaw({ type: "req", id, method, params });
+    });
+  }
+
   /** Close the WebSocket connection. */
   disconnect() {
     this._connected = false;

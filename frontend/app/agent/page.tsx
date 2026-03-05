@@ -28,18 +28,39 @@ function TypingDots() {
   );
 }
 
+function normalizeHistoryMessage(raw: unknown): Message | null {
+  const m = raw as { role?: string; content?: Array<{type: string; text?: string}> | string; timestamp?: number };
+  if (m.role !== "user" && m.role !== "assistant") return null;
+  const role = m.role === "assistant" ? "agent" : "user";
+  let text = "";
+  if (typeof m.content === "string") text = m.content;
+  else if (Array.isArray(m.content))
+    text = m.content.filter(c => c.type === "text").map(c => c.text ?? "").join("");
+  if (!text || /^\s*NO_REPLY\s*$/.test(text)) return null;
+  return {
+    id: crypto.randomUUID(), role, text,
+    ts: m.timestamp
+      ? new Date(m.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+      : "",
+  };
+}
+
 function Chat() {
   const [ocAgents, setOcAgents]       = useState<OcAgent[]>([]);
   const [agentsLoading, setAgLoading] = useState(true);
   const [agent, setAgent]             = useState<OcAgent | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [agentMessages, setAgentMessages] = useState<Map<string, Message[]>>(new Map());
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loadingAgents, setLoadingAgents] = useState<Set<string>>(new Set());
   const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
   const clientRef        = useRef<OpenClawWSClient | null>(null);
   const bottomRef        = useRef<HTMLDivElement>(null);
   const agentRef         = useRef<OcAgent | null>(null);
-  const streamingTextRef = useRef("");
+  const streamingTextRef = useRef<Map<string, string>>(new Map());
+  const loadedAgentsRef  = useRef<Set<string>>(new Set());
+
+  const messages = agentMessages.get(agent?.id ?? "") ?? [];
+  const loading  = loadingAgents.has(agent?.id ?? "");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -87,41 +108,50 @@ function Chat() {
       return "";
     };
 
+    const agentId = agentRef.current?.id ?? "";
+
     if (payload.state === "delta") {
       // Delta events are cumulative (replace, not append) — mirrors OpenClaw UI chat controller
       const next = extractText(payload.message);
-      if (next && next.length >= streamingTextRef.current.length) {
-        streamingTextRef.current = next;
+      const cur = streamingTextRef.current.get(agentId) ?? "";
+      if (next && next.length >= cur.length) {
+        streamingTextRef.current.set(agentId, next);
       }
       return;
     }
 
     if (payload.state === "final") {
-      const text = extractText(payload.message) || streamingTextRef.current;
-      streamingTextRef.current = "";
+      const text = extractText(payload.message) || (streamingTextRef.current.get(agentId) ?? "");
+      streamingTextRef.current.delete(agentId);
       if (text) {
-        setMessages(prev => [...prev, {
-          id:    crypto.randomUUID(),
-          role:  "agent",
-          text,
-          agent: agentRef.current?.name ?? agentRef.current?.id ?? "",
-          ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-        }]);
+        setAgentMessages(prev => {
+          const existing = prev.get(agentId) ?? [];
+          return new Map(prev).set(agentId, [...existing, {
+            id:    crypto.randomUUID(),
+            role:  "agent",
+            text,
+            agent: agentRef.current?.name ?? agentRef.current?.id ?? "",
+            ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+          }]);
+        });
       }
-      setLoading(false);
+      setLoadingAgents(prev => { const s = new Set(prev); s.delete(agentId); return s; });
       return;
     }
 
     if (payload.state === "aborted" || payload.state === "error") {
-      streamingTextRef.current = "";
-      setMessages(prev => [...prev, {
-        id:    crypto.randomUUID(),
-        role:  "agent",
-        text:  `⚠️ ${payload.errorMessage ?? payload.state}`,
-        agent: agentRef.current?.name ?? agentRef.current?.id ?? "",
-        ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-      }]);
-      setLoading(false);
+      streamingTextRef.current.delete(agentId);
+      setAgentMessages(prev => {
+        const existing = prev.get(agentId) ?? [];
+        return new Map(prev).set(agentId, [...existing, {
+          id:    crypto.randomUUID(),
+          role:  "agent",
+          text:  `⚠️ ${payload.errorMessage ?? payload.state}`,
+          agent: agentRef.current?.name ?? agentRef.current?.id ?? "",
+          ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+        }]);
+      });
+      setLoadingAgents(prev => { const s = new Set(prev); s.delete(agentId); return s; });
     }
   }, []); // stable — reads agent via ref to avoid WS reconnect on agent switch
 
@@ -147,24 +177,46 @@ function Chat() {
     };
   }, [handleEvent]);
 
+  // ── Load history on agent switch ─────────────────────────────────────────
+  useEffect(() => {
+    if (!agent || wsStatus !== "connected" || !clientRef.current) return;
+    if (loadedAgentsRef.current.has(agent.id)) return;
+    loadedAgentsRef.current.add(agent.id);
+
+    clientRef.current.request<{ messages?: unknown[] }>(
+      "chat.history",
+      { sessionKey: `agent:${agent.id}:main`, limit: 200 }
+    ).then(frame => {
+      if (!frame.ok || !frame.payload?.messages) return;
+      const msgs = frame.payload.messages
+        .map(normalizeHistoryMessage)
+        .filter(Boolean) as Message[];
+      setAgentMessages(prev => new Map(prev).set(agent.id, msgs));
+    }).catch(() => {}); // degrade gracefully if OpenClaw unavailable
+  }, [agent, wsStatus]);
+
   // ── Send ─────────────────────────────────────────────────────────────────
   const send = async () => {
     const text = input.trim();
     if (!text || loading || wsStatus !== "connected" || !agent) return;
 
+    const agentId = agent.id;
     const userMsg: Message = {
       id:   crypto.randomUUID(),
       role: "user",
       text,
       ts:   new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
     };
-    setMessages(prev => [...prev, userMsg]);
+    setAgentMessages(prev => {
+      const existing = prev.get(agentId) ?? [];
+      return new Map(prev).set(agentId, [...existing, userMsg]);
+    });
     setInput("");
-    setLoading(true);
-    streamingTextRef.current = "";
+    setLoadingAgents(prev => new Set(prev).add(agentId));
+    streamingTextRef.current.delete(agentId);
 
     try {
-      const res = await clientRef.current!.sendMessage(text, { agentId: agent.id });
+      const res = await clientRef.current!.sendMessage(text, { agentId });
       if (!res.ok) {
         const payload = res.payload as Record<string, unknown> | undefined;
         const errMsg: Message = {
@@ -174,8 +226,11 @@ function Chat() {
           agent: agent?.name ?? agent?.id ?? "",
           ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
         };
-        setMessages(prev => [...prev, errMsg]);
-        setLoading(false);
+        setAgentMessages(prev => {
+          const existing = prev.get(agentId) ?? [];
+          return new Map(prev).set(agentId, [...existing, errMsg]);
+        });
+        setLoadingAgents(prev => { const s = new Set(prev); s.delete(agentId); return s; });
       }
       // ok: true → reply arrives via onEvent callback above
     } catch {
@@ -186,8 +241,11 @@ function Chat() {
         agent: agent?.name ?? agent?.id ?? "",
         ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
       };
-      setMessages(prev => [...prev, errMsg]);
-      setLoading(false);
+      setAgentMessages(prev => {
+        const existing = prev.get(agentId) ?? [];
+        return new Map(prev).set(agentId, [...existing, errMsg]);
+      });
+      setLoadingAgents(prev => { const s = new Set(prev); s.delete(agentId); return s; });
     }
   };
 

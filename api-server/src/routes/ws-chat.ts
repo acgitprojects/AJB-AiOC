@@ -68,6 +68,17 @@ export function handleWsChat(browserWs: WebSocket) {
       return;
     }
 
+    if (frame.type === "req" && frame.method === "chat.history") {
+      if (ocSocket.readyState !== ocSocket.OPEN) {
+        browserWs.send(JSON.stringify({ type: "res", id: frame.id, ok: false,
+          payload: { error: "Gateway not ready" } }));
+        return;
+      }
+      pendingChatIds.add(frame.id as string);
+      ocSocket.send(JSON.stringify(frame));
+      return;
+    }
+
     if (frame.type === "req") {
       browserWs.send(JSON.stringify({ type: "res", id: frame.id, ok: false,
         payload: { error: "Method not allowed" } }));
