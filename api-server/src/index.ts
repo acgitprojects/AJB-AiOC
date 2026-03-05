@@ -1,9 +1,11 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { WebSocketServer } from "ws";
 import { initServer } from "@ts-rest/fastify";
 import { appRouter } from "./router";
 import { migrate } from "./db/migrate";
 import { seedIfEmpty, resetAndReseed } from "./db/seed";
+import { handleWsChat } from "./routes/ws-chat";
 
 async function start() {
   await migrate();
@@ -33,6 +35,13 @@ async function start() {
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });
+
+  const wss = new WebSocketServer({ noServer: true });
+  app.server.on("upgrade", (req, socket, head) => {
+    if (req.url === "/api/ws") {
+      wss.handleUpgrade(req, socket, head, (ws) => handleWsChat(ws));
+    }
+  });
 }
 
 start().catch(err => {

@@ -78,6 +78,7 @@ services:
     depends_on:
       - api-server
       - frontend
+      - openclaw
     restart: unless-stopped
 
 volumes:

@@ -73,7 +73,7 @@ export default function OrgPage() {
     setError(null);
     try {
       const res = await apiClient.openclaw.agents.create({
-        body: { id: newId.trim(), ...(newModel.trim() ? { model: newModel.trim() } : {}) },
+        body: { id: newId.trim(), ...(newModel.trim() ? { model: newProvider ? `${newProvider}/${newModel.trim()}` : newModel.trim() } : {}) },
       });
       if (res.status === 201) {
         setNewId("");
@@ -91,13 +91,16 @@ export default function OrgPage() {
 
   async function openEdit(agent: OcAgent) {
     setEditingAgent(agent);
-    const agentProvider = agent.model
-      ? (ocModels.find(m => m.id === agent.model)?.provider ?? ocModels[0]?.provider ?? "")
-      : (ocModels[0]?.provider ?? "");
+    // agent.model may be "github-copilot/gpt-4.1" or bare "gpt-4.1" — extract both parts
+    const lastSlash = (agent.model ?? "").lastIndexOf("/");
+    const bareModelId = lastSlash >= 0 ? agent.model!.slice(lastSlash + 1) : (agent.model ?? "");
+    const embeddedProvider = lastSlash >= 0 ? agent.model!.slice(0, lastSlash) : "";
+    const agentProvider = embeddedProvider ||
+      ((ocModels.find(m => m.id === (agent.model ?? ""))?.provider ?? ocModels[0]?.provider) ?? "");
     setEditFields({
       name: agent.name ?? "",
       emoji: agent.emoji ?? "",
-      model: agent.model ?? modelsForProvider(agentProvider)[0]?.id ?? "",
+      model: (bareModelId || modelsForProvider(agentProvider)[0]?.id) ?? "",
       provider: agentProvider,
     });
     setEditFiles({});
@@ -134,7 +137,7 @@ export default function OrgPage() {
         body: {
           name: editFields.name,
           emoji: editFields.emoji,
-          model: editFields.model || undefined,
+          model: editFields.model ? (editFields.provider ? `${editFields.provider}/${editFields.model}` : editFields.model) : undefined,
           files: editFiles,
         },
       });

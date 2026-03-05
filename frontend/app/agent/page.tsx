@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { AGENTS } from "@/lib/mock-data";
+import { apiClient } from "@/lib/api-client";
+import type { OcAgent } from "@ajb/contract";
 import { OpenClawWSClient } from "@/lib/openclaw";
 import type { WSFrame } from "@/lib/openclaw";
 import {
@@ -28,46 +29,105 @@ function TypingDots() {
 }
 
 function Chat() {
-  const [agent, setAgent] = useState(AGENTS[0]);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "0",
-      role: "agent",
-      text: "Hi Andrew. I'm Jary — your executive assistant. What do you need?",
-      agent: "Jary",
-      ts: "09:00",
-    },
-  ]);
+  const [ocAgents, setOcAgents]       = useState<OcAgent[]>([]);
+  const [agentsLoading, setAgLoading] = useState(true);
+  const [agent, setAgent]             = useState<OcAgent | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
-  const clientRef = useRef<OpenClawWSClient | null>(null);
-  const bottomRef  = useRef<HTMLDivElement>(null);
+  const clientRef        = useRef<OpenClawWSClient | null>(null);
+  const bottomRef        = useRef<HTMLDivElement>(null);
+  const agentRef         = useRef<OcAgent | null>(null);
+  const streamingTextRef = useRef("");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Keep agentRef in sync so handleEvent can read current agent without deps
+  useEffect(() => { agentRef.current = agent; }, [agent]);
+
+  // ── Load real agents ─────────────────────────────────────────────────────
+  useEffect(() => {
+    apiClient.openclaw.agents.list()
+      .then(res => {
+        if (res.status === 200 && res.body.length > 0) {
+          setOcAgents(res.body);
+          setAgent(res.body[0]);
+        }
+      })
+      .finally(() => setAgLoading(false));
+  }, []);
+
   // ── WebSocket lifecycle ──────────────────────────────────────────────────
   const handleEvent = useCallback((frame: WSFrame) => {
-    if (frame.event === "chat.reply") {
-      const payload = frame.payload as Record<string, unknown> | undefined;
-      const text = (payload?.message as string) ?? (payload?.text as string) ?? JSON.stringify(payload);
-      const reply: Message = {
+    if (frame.event !== "chat") return;
+
+    const payload = frame.payload as {
+      sessionKey?: string;
+      state: "delta" | "final" | "aborted" | "error";
+      message?: { role: string; content: Array<{ type: string; text: string }>; timestamp: number } | null;
+      errorMessage?: string;
+    } | undefined;
+    if (!payload) return;
+
+    // Filter events to the current agent's session (mirrors OpenClaw UI handleChatEvent)
+    if (payload.sessionKey && agentRef.current &&
+        payload.sessionKey !== `agent:${agentRef.current.id}:main`) return;
+
+    const extractText = (msg: typeof payload.message): string => {
+      if (!msg) return "";
+      if (Array.isArray(msg.content)) {
+        return msg.content
+          .filter(c => c.type === "text")
+          .map(c => c.text)
+          .join("");
+      }
+      return "";
+    };
+
+    if (payload.state === "delta") {
+      // Delta events are cumulative (replace, not append) — mirrors OpenClaw UI chat controller
+      const next = extractText(payload.message);
+      if (next && next.length >= streamingTextRef.current.length) {
+        streamingTextRef.current = next;
+      }
+      return;
+    }
+
+    if (payload.state === "final") {
+      const text = extractText(payload.message) || streamingTextRef.current;
+      streamingTextRef.current = "";
+      if (text) {
+        setMessages(prev => [...prev, {
+          id:    crypto.randomUUID(),
+          role:  "agent",
+          text,
+          agent: agentRef.current?.name ?? agentRef.current?.id ?? "",
+          ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+        }]);
+      }
+      setLoading(false);
+      return;
+    }
+
+    if (payload.state === "aborted" || payload.state === "error") {
+      streamingTextRef.current = "";
+      setMessages(prev => [...prev, {
         id:    crypto.randomUUID(),
         role:  "agent",
-        text,
-        agent: agent.name,
+        text:  `⚠️ ${payload.errorMessage ?? payload.state}`,
+        agent: agentRef.current?.name ?? agentRef.current?.id ?? "",
         ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-      };
-      setMessages(prev => [...prev, reply]);
+      }]);
       setLoading(false);
     }
-  }, [agent.name]);
+  }, []); // stable — reads agent via ref to avoid WS reconnect on agent switch
 
   useEffect(() => {
-    const wsUrl   = process.env.NEXT_PUBLIC_OPENCLAW_WS_URL   ?? "ws://localhost:18789";
-    const wsToken = process.env.NEXT_PUBLIC_OPENCLAW_WS_TOKEN ?? "";
+    const wsUrl   = `${window.location.protocol.replace("http", "ws")}//${window.location.host}/api/ws`;
+    const wsToken = "";   // auth is handled server-side in the proxy
 
     const client = new OpenClawWSClient({
       wsUrl,
@@ -90,7 +150,7 @@ function Chat() {
   // ── Send ─────────────────────────────────────────────────────────────────
   const send = async () => {
     const text = input.trim();
-    if (!text || loading || wsStatus !== "connected") return;
+    if (!text || loading || wsStatus !== "connected" || !agent) return;
 
     const userMsg: Message = {
       id:   crypto.randomUUID(),
@@ -101,16 +161,29 @@ function Chat() {
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setLoading(true);
+    streamingTextRef.current = "";
 
     try {
-      await clientRef.current!.sendMessage(text, { agentId: agent.id });
-      // Reply will arrive via onEvent callback above
+      const res = await clientRef.current!.sendMessage(text, { agentId: agent.id });
+      if (!res.ok) {
+        const payload = res.payload as Record<string, unknown> | undefined;
+        const errMsg: Message = {
+          id:    crypto.randomUUID(),
+          role:  "agent",
+          text:  `⚠️ ${(payload?.error as string) ?? "Gateway not ready"}`,
+          agent: agent?.name ?? agent?.id ?? "",
+          ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+        };
+        setMessages(prev => [...prev, errMsg]);
+        setLoading(false);
+      }
+      // ok: true → reply arrives via onEvent callback above
     } catch {
       const errMsg: Message = {
         id:    crypto.randomUUID(),
         role:  "agent",
         text:  "⚠️ Unable to send message. Check your connection.",
-        agent: agent.name,
+        agent: agent?.name ?? agent?.id ?? "",
         ts:    new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages(prev => [...prev, errMsg]);
@@ -123,17 +196,18 @@ function Chat() {
       {/* Agent selector + WS status */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-xs text-slate-500 font-medium">Agent:</span>
-        {AGENTS.slice(0, 6).map(a => (
-          <button
-            key={a.id}
-            onClick={() => setAgent(a)}
-            className={`px-3 py-1 text-xs rounded-full font-medium border transition-all duration-200 ${
-              agent.id === a.id
-                ? "bg-arc-cyan/20 text-arc-cyan border-arc-cyan shadow-[0_0_8px_rgba(0,212,255,0.35)]"
-                : "border-navy-700 text-slate-400 hover:border-arc-cyan/50 hover:text-arc-cyan/80"
-            }`}
-          >{a.name}</button>
-        ))}
+        {agentsLoading
+          ? <span className="text-xs text-slate-500 animate-pulse">Loading agents…</span>
+          : ocAgents.map(a => (
+              <button key={a.id} onClick={() => setAgent(a)}
+                className={`px-3 py-1 text-xs rounded-full font-medium border transition-all duration-200 ${
+                  agent?.id === a.id
+                    ? "bg-arc-cyan/20 text-arc-cyan border-arc-cyan shadow-[0_0_8px_rgba(0,212,255,0.35)]"
+                    : "border-navy-700 text-slate-400 hover:border-arc-cyan/50 hover:text-arc-cyan/80"
+                }`}
+              >{a.emoji ? `${a.emoji} ` : ""}{a.name ?? a.id}</button>
+            ))
+        }
         <span className="ml-auto flex items-center gap-1.5 text-xs">
           {wsStatus === "connected"
             ? <><Wifi size={12} className="text-emerald-400" /><span className="text-emerald-400">Live</span></>
@@ -153,7 +227,7 @@ function Chat() {
                 ? "bg-violet-600 text-white shadow-[0_0_10px_rgba(139,92,246,0.5)]"
                 : "bg-navy-800 text-arc-cyan border border-arc-cyan/30 shadow-[0_0_8px_rgba(0,212,255,0.2)]"
               }`}>
-              {m.role === "user" ? "AC" : (m.agent || agent.name).slice(0, 2).toUpperCase()}
+              {m.role === "user" ? "AC" : (m.agent || agent?.name || agent?.id || "?").slice(0, 2).toUpperCase()}
             </div>
             <div className={`max-w-[75%] flex flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}>
               <div className={`px-3.5 py-2.5 rounded-xl text-sm whitespace-pre-wrap leading-relaxed ${
@@ -168,7 +242,7 @@ function Chat() {
         {loading && (
           <div className="flex gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-navy-800 border border-arc-cyan/30 flex items-center justify-center text-xs font-bold font-mono-jet text-arc-cyan shadow-[0_0_8px_rgba(0,212,255,0.2)]">
-              {agent.name.slice(0, 2).toUpperCase()}
+              {(agent?.name ?? agent?.id ?? "?").slice(0, 2).toUpperCase()}
             </div>
             <div className="bg-navy-800/80 border border-navy-700/60 rounded-xl rounded-tl-sm">
               <TypingDots />
@@ -184,15 +258,15 @@ function Chat() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
-          placeholder={wsStatus === "connected" ? `Message ${agent.name}…` : "Connecting to agent…"}
-          disabled={wsStatus !== "connected"}
+          placeholder={wsStatus === "connected" && agent ? `Message ${agent.name ?? agent.id}…` : "Connecting…"}
+          disabled={wsStatus !== "connected" || !agent}
           className="flex-1 text-sm bg-navy-900/70 border border-navy-700 rounded-xl px-4 py-2.5 text-slate-200 placeholder-slate-600
             focus:outline-none focus:border-arc-cyan/60 focus:shadow-[0_0_0_3px_rgba(0,212,255,0.15)] transition-all
             disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           onClick={send}
-          disabled={loading || !input.trim() || wsStatus !== "connected"}
+          disabled={loading || !input.trim() || wsStatus !== "connected" || !agent}
           className="bg-arc-cyan/20 hover:bg-arc-cyan/30 disabled:opacity-40 disabled:cursor-not-allowed
             text-arc-cyan border border-arc-cyan/50 hover:border-arc-cyan hover:shadow-glow-cyan
             rounded-xl px-4 py-2.5 transition-all duration-200"

@@ -78,16 +78,38 @@ export const openclawHandlers = {
     },
 
     create: async ({ body }: { body: { id: string; model?: string } }) => {
-      const r = ocCliExec(
-        "agents", "add", body.id, "--non-interactive",
-        "--workspace", OC_WORKSPACE, "--json",
-        ...(body.model ? ["--model", body.model] : [])
-      );
-      if (!r.ok) return { status: 400 as const, body: { error: r.error ?? "Failed to create agent" } };
-      if (body.model) await configRepo.upsert(body.id, body.model).catch(() => {});
-      // Use CLI output directly — avoids WS timing race after config write
-      const created = r.data as { agentId?: string; name?: string } | null;
-      return { status: 201 as const, body: { id: created?.agentId ?? body.id, name: created?.name ?? body.id, isDefault: false, routes: [] } as OcAgent };
+      // Use WS agents.create — same as OpenClaw UI (server-methods/agents.ts:476)
+      let agentId: string;
+      try {
+        const r = (await ocWsRequest("agents.create", {
+          name: body.id,
+          workspace: OC_WORKSPACE,
+        })) as { ok: true; agentId: string; name: string; workspace: string };
+        agentId = r.agentId ?? body.id;
+      } catch (e: unknown) {
+        return { status: 400 as const, body: { error: String(e) } };
+      }
+
+      if (body.model) await configRepo.upsert(agentId, body.model).catch(() => {});
+
+      // Copy auth-profiles.json from main (WS create does NOT do this automatically)
+      const safeNewId = agentId.replace(/[^a-zA-Z0-9_-]/g, "");
+      if (safeNewId === agentId) {
+        Bun.spawnSync(["docker", "exec", CONTAINER, "sh", "-c",
+          `mkdir -p /home/node/.openclaw/agents/${safeNewId}/agent && ln -sf /home/node/.openclaw/agents/main/agent/auth-profiles.json /home/node/.openclaw/agents/${safeNewId}/agent/auth-profiles.json`
+        ]);
+      }
+
+      // Set model in openclaw.json (WS create doesn't accept model param)
+      if (body.model !== undefined) {
+        const safeModel = body.model.replace(/[^a-zA-Z0-9_./:@-]/g, "");
+        if (safeNewId === agentId && safeModel === body.model) {
+          const script = `try{const fs=require("fs"),f="/home/node/.openclaw/openclaw.json",c=JSON.parse(fs.readFileSync(f,"utf8")),a=(c.agents?.list??[]).find(a=>a.id===${JSON.stringify(safeNewId)});if(a)a.model=${JSON.stringify(safeModel)};fs.writeFileSync(f,JSON.stringify(c,null,2),"utf8")}catch(e){}`;
+          Bun.spawnSync(["docker", "exec", CONTAINER, "node", "-e", script]);
+        }
+      }
+
+      return { status: 201 as const, body: { id: agentId, name: body.id, isDefault: false, routes: [] } as OcAgent };
     },
 
     files: async ({ params }: { params: { id: string } }) => {
@@ -135,6 +157,15 @@ export const openclawHandlers = {
       }
       if (body.model !== undefined || body.tools !== undefined)
         await configRepo.upsert(params.id, body.model, body.tools);
+
+      if (body.model !== undefined) {
+        const safeId    = params.id.replace(/[^a-zA-Z0-9_-]/g, "");
+        const safeModel = (body.model ?? "").replace(/[^a-zA-Z0-9_./:@-]/g, "");
+        if (safeId === params.id && safeModel === (body.model ?? "")) {
+          const script = `try{const fs=require("fs"),f="/home/node/.openclaw/openclaw.json",c=JSON.parse(fs.readFileSync(f,"utf8")),a=(c.agents?.list??[]).find(a=>a.id===${JSON.stringify(safeId)});if(a)a.model=${JSON.stringify(safeModel)};fs.writeFileSync(f,JSON.stringify(c,null,2),"utf8")}catch(e){}`;
+          Bun.spawnSync(["docker", "exec", CONTAINER, "node", "-e", script]);
+        }
+      }
 
       const cfg = await configRepo.findAll().then(cs => cs.find(c => c.agentId === params.id)).catch(() => undefined);
       const existingRaw = existing as unknown as { identity?: { name?: string; emoji?: string } };

@@ -13,10 +13,12 @@
     "@ts-rest/fastify": "^3.51.0",
     "fastify": "^4.28.0",
     "postgres": "^3.4.8",
+    "ws": "^8.19.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.19.0",
     "typescript": "^5"
   }
