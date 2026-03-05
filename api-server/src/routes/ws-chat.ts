@@ -62,7 +62,11 @@ export function handleWsChat(browserWs: WebSocket) {
       const params = frame.params as Record<string, unknown>;
       const agentId = (params.agentId as string | undefined) ?? "main";
       const { agentId: _a, sessionKey: _sk, ...rest } = params;
-      const cleanParams = { ...rest, sessionKey: `agent:${agentId}:main`, deliver: false };
+      const providedKey = params.sessionKey as string | undefined;
+      const sessionKey = (providedKey?.startsWith(`agent:${agentId}:`))
+        ? providedKey
+        : `agent:${agentId}:main`;
+      const cleanParams = { ...rest, sessionKey, deliver: false };
       pendingChatIds.add(frame.id as string);
       ocSocket.send(JSON.stringify({ ...frame, params: cleanParams }));
       return;

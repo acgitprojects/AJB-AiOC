@@ -7,7 +7,7 @@ import { OpenClawWSClient } from "@/lib/openclaw";
 import type { WSFrame } from "@/lib/openclaw";
 import {
   Send, Bot, FileText, Image, FileSpreadsheet,
-  Presentation, Download, Sparkles, Wifi, WifiOff,
+  Presentation, Download, Sparkles, Wifi, WifiOff, RotateCcw,
 } from "lucide-react";
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -56,8 +56,9 @@ function Chat() {
   const clientRef        = useRef<OpenClawWSClient | null>(null);
   const bottomRef        = useRef<HTMLDivElement>(null);
   const agentRef         = useRef<OcAgent | null>(null);
-  const streamingTextRef = useRef<Map<string, string>>(new Map());
-  const loadedAgentsRef  = useRef<Set<string>>(new Set());
+  const streamingTextRef     = useRef<Map<string, string>>(new Map());
+  const loadedAgentsRef      = useRef<Set<string>>(new Set());
+  const activeSessionKeyRef  = useRef<Map<string, string>>(new Map());
 
   const messages = agentMessages.get(agent?.id ?? "") ?? [];
   const loading  = loadingAgents.has(agent?.id ?? "");
@@ -95,7 +96,7 @@ function Chat() {
 
     // Filter events to the current agent's session (mirrors OpenClaw UI handleChatEvent)
     if (payload.sessionKey && agentRef.current &&
-        payload.sessionKey !== `agent:${agentRef.current.id}:main`) return;
+        !payload.sessionKey.startsWith(`agent:${agentRef.current.id}:`)) return;
 
     const extractText = (msg: typeof payload.message): string => {
       if (!msg) return "";
@@ -182,10 +183,14 @@ function Chat() {
     if (!agent || wsStatus !== "connected" || !clientRef.current) return;
     if (loadedAgentsRef.current.has(agent.id)) return;
     loadedAgentsRef.current.add(agent.id);
+    if (!activeSessionKeyRef.current.has(agent.id)) {
+      activeSessionKeyRef.current.set(agent.id, `agent:${agent.id}:main`);
+    }
+    const sessionKey = activeSessionKeyRef.current.get(agent.id)!;
 
     clientRef.current.request<{ messages?: unknown[] }>(
       "chat.history",
-      { sessionKey: `agent:${agent.id}:main`, limit: 200 }
+      { sessionKey, limit: 200 }
     ).then(frame => {
       if (!frame.ok || !frame.payload?.messages) return;
       const msgs = frame.payload.messages
@@ -216,7 +221,8 @@ function Chat() {
     streamingTextRef.current.delete(agentId);
 
     try {
-      const res = await clientRef.current!.sendMessage(text, { agentId });
+      const sessionKey = activeSessionKeyRef.current.get(agentId) ?? `agent:${agentId}:main`;
+      const res = await clientRef.current!.sendMessage(text, { agentId, sessionKey });
       if (!res.ok) {
         const payload = res.payload as Record<string, unknown> | undefined;
         const errMsg: Message = {
@@ -249,6 +255,17 @@ function Chat() {
     }
   };
 
+  const handleNewSession = () => {
+    if (!agent || loading) return;
+    const agentId = agent.id;
+    const newKey = `agent:${agentId}:${Date.now()}`;
+    activeSessionKeyRef.current.set(agentId, newKey);
+    setAgentMessages(prev => new Map(prev).set(agentId, []));
+    streamingTextRef.current.delete(agentId);
+    setLoadingAgents(prev => { const s = new Set(prev); s.delete(agentId); return s; });
+    loadedAgentsRef.current.delete(agentId);
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] lg:h-[620px]">
       {/* Agent selector + WS status */}
@@ -266,7 +283,18 @@ function Chat() {
               >{a.emoji ? `${a.emoji} ` : ""}{a.name ?? a.id}</button>
             ))
         }
-        <span className="ml-auto flex items-center gap-1.5 text-xs">
+        <button
+          onClick={handleNewSession}
+          disabled={!agent || loading}
+          title="New session"
+          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-navy-700
+            text-slate-400 hover:border-arc-cyan/50 hover:text-arc-cyan/80 transition-all duration-200
+            disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <RotateCcw size={11} />
+          New session
+        </button>
+        <span className="flex items-center gap-1.5 text-xs">
           {wsStatus === "connected"
             ? <><Wifi size={12} className="text-emerald-400" /><span className="text-emerald-400">Live</span></>
             : wsStatus === "connecting"
