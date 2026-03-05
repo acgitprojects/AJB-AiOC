@@ -87,7 +87,7 @@ if $RUN_E2E; then
   # Ensure cleanup on exit regardless of test outcome
   trap 'docker compose '"${E2E_COMPOSE}"' down -v --remove-orphans 2>/dev/null || true' EXIT
 
-  docker compose ${E2E_COMPOSE} up -d --wait postgres api-server
+  docker compose ${E2E_COMPOSE} up -d --wait postgres openclaw-init openclaw api-server
 
   E2E_PORT=$(docker compose ${E2E_COMPOSE} port api-server 3001 | cut -d: -f2)
   echo "  api-server → http://localhost:${E2E_PORT}"

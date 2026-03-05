@@ -55,6 +55,17 @@ runtime:  nginx:alpine     →  /app/frontend/out → /usr/share/nginx/html
 Both `api-server/tsconfig.json` and `frontend/tsconfig.json` map:
 `"@ajb/contract": ["../contract/src/index.ts"]`
 
+## Testing: no mocks — use the isolated Docker Compose test stack
+
+**Never write mock-based unit tests for code that talks to external services** (databases, WebSocket servers, HTTP APIs, Docker). Mocks diverge from reality silently and catch nothing real.
+
+Use the isolated Docker Compose test stack instead:
+- `docker-compose.test.yml` overlays `docker-compose.yml` to create an isolated stack per test run
+- E2E tests in `tests/e2e/` spin up real containers (postgres, api-server) and test against them
+- When openclaw is absent the api-server must degrade gracefully — test that, not a mock
+
+Unit tests (`api-server/tests/unit/`) are only appropriate for pure logic with no external I/O (e.g. password hashing, schema validation, pure data transforms).
+
 ## Stop hook: bun build + tsc
 
 `.claude/hooks/validate-contract.sh` runs on every Stop event when `.ts`/`.tsx` files changed:

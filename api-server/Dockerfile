@@ -23,6 +23,8 @@ RUN cd api-server && bun build src/index.ts \
 FROM oven/bun:alpine AS runtime
 WORKDIR /app
 
+RUN apk add --no-cache docker-cli
+
 COPY --from=builder /app/api-server/dist/server ./server
 
 EXPOSE 3001

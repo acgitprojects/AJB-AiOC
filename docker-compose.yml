@@ -11,6 +11,34 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  openclaw-init:
+    image: ghcr.io/openclaw/openclaw
+    user: root
+    volumes:
+      - openclaw_config:/home/node/.openclaw
+      - ./openclaw:/config:ro
+    entrypoint: /bin/sh
+    command: >
+      -c "cp -rn /config/. /home/node/.openclaw/ 2>/dev/null || true &&
+          chown -R node:node /home/node/.openclaw"
+    restart: "no"
+
+  openclaw:
+    image: ghcr.io/openclaw/openclaw
+    container_name: openclaw
+    user: node
+    expose:
+      - "18789"
+      - "18790"
+    environment:
+      GATEWAY_TOKEN: "${OPENCLAW_GATEWAY_TOKEN:-devtoken}"
+    volumes:
+      - openclaw_config:/home/node/.openclaw
+    depends_on:
+      openclaw-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   api-server:
     build:
       context: .
@@ -20,8 +48,13 @@ services:
     environment:
       PORT: "3001"
       DATABASE_URL: "postgresql://aioc:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/aioc"
-      OPENCLAW_GATEWAY_URL: "${OPENCLAW_GATEWAY_URL:-http://localhost:18789}"
+      OPENCLAW_GATEWAY_URL: "http://openclaw:18789"
+      OPENCLAW_GATEWAY_TOKEN: "${OPENCLAW_GATEWAY_TOKEN:-devtoken}"
+      OPENCLAW_WS_URL: "ws://openclaw:18789"
+      OPENCLAW_CONTAINER_NAME: "openclaw"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-changeme}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - postgres
     restart: unless-stopped
@@ -49,3 +82,4 @@ services:
 
 volumes:
   postgres_data:
+  openclaw_config:

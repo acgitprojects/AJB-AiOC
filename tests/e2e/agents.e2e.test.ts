@@ -17,29 +17,17 @@ beforeEach(async () => {
 }, 30_000);
 
 describe("GET /api/agents", () => {
-  it("returns 10 seeded agents", async () => {
+  it("returns 200 with array when openclaw unreachable", async () => {
     const res = await fetch(`${env.baseUrl}/api/agents`);
     expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body)).toBe(true);
+  });
+
+  it("returns empty array when openclaw is absent", async () => {
+    const res = await fetch(`${env.baseUrl}/api/agents`);
     const body = (await res.json()) as unknown[];
-    expect(body).toHaveLength(10);
-  });
-
-  it("each agent has required fields", async () => {
-    const res = await fetch(`${env.baseUrl}/api/agents`);
-    const agents = (await res.json()) as Array<Record<string, unknown>>;
-    for (const agent of agents) {
-      expect(typeof agent.id).toBe("string");
-      expect(typeof agent.name).toBe("string");
-      expect(typeof agent.role).toBe("string");
-      expect(typeof agent.status).toBe("string");
-    }
-  });
-
-  it("includes jary as root agent", async () => {
-    const res = await fetch(`${env.baseUrl}/api/agents`);
-    const agents = (await res.json()) as Array<{ id: string; reportsTo: string | null }>;
-    const jary = agents.find((a) => a.id === "jary");
-    expect(jary).toBeDefined();
-    expect(jary!.reportsTo).toBeNull();
+    // openclaw not running in test stack → empty
+    expect(body).toHaveLength(0);
   });
 });

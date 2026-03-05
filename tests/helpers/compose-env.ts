@@ -29,13 +29,16 @@ export async function startComposeEnv(): Promise<ComposeEnv> {
   const flags = [...COMPOSE_FILES, "-p", project];
   const cmd = (sub: string) => `docker compose ${flags.join(" ")} ${sub}`;
 
-  execSync(`${cmd("up -d --wait postgres api-server")}`, {
+  const composeEnv = { ...process.env, COMPOSE_PROJECT_NAME: project };
+
+  execSync(`${cmd("up -d --wait --build postgres openclaw-init openclaw api-server")}`, {
     cwd: REPO_ROOT,
     stdio: "pipe",
+    env: composeEnv,
   });
 
   // Discover the randomly-assigned host port
-  const portLine = execSync(`${cmd("port api-server 3001")}`, { cwd: REPO_ROOT })
+  const portLine = execSync(`${cmd("port api-server 3001")}`, { cwd: REPO_ROOT, env: composeEnv })
     .toString()
     .trim(); // e.g. "0.0.0.0:54321"
   const port = portLine.split(":").pop()!;
@@ -46,6 +49,7 @@ export async function startComposeEnv(): Promise<ComposeEnv> {
       execSync(`${cmd("down -v --remove-orphans")}`, {
         cwd: REPO_ROOT,
         stdio: "pipe",
+        env: composeEnv,
       }),
   };
 }

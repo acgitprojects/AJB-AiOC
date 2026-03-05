@@ -16,6 +16,11 @@ import {
   GatewayStatusSchema,
   ChatBodySchema,
   ChatResponseSchema,
+  OcAgentSchema,
+  OcAgentCreateSchema,
+  OcAgentPatchSchema,
+  OcAgentFileSchema,
+  OcModelSchema,
 } from "./schemas/openclaw";
 import { KanbanTaskSchema, BoardPatchBodySchema } from "./schemas/board";
 import { PipelineItemSchema } from "./schemas/pipeline";
@@ -130,6 +135,53 @@ export const contract = c.router({
         200: ChatResponseSchema,
         202: ChatResponseSchema,
       },
+    },
+    agents: c.router({
+      list: {
+        method: "GET",
+        path: "/api/openclaw/agents",
+        responses: { 200: z.array(OcAgentSchema) },
+      },
+      create: {
+        method: "POST",
+        path: "/api/openclaw/agents",
+        body: OcAgentCreateSchema,
+        responses: {
+          201: OcAgentSchema,
+          400: z.object({ error: z.string() }),
+        },
+      },
+      update: {
+        method: "PATCH",
+        path: "/api/openclaw/agents/:id",
+        pathParams: z.object({ id: z.string() }),
+        body: OcAgentPatchSchema,
+        responses: {
+          200: OcAgentSchema,
+          404: z.object({ message: z.string() }),
+        },
+      },
+      delete: {
+        method: "DELETE",
+        path: "/api/openclaw/agents/:id",
+        pathParams: z.object({ id: z.string() }),
+        body: c.noBody(),
+        responses: {
+          200: OkResponseSchema,
+          400: z.object({ error: z.string() }),
+        },
+      },
+      files: {
+        method: "GET",
+        path: "/api/openclaw/agents/:id/files",
+        pathParams: z.object({ id: z.string() }),
+        responses: { 200: z.array(OcAgentFileSchema) },
+      },
+    }),
+    models: {
+      method: "GET",
+      path: "/api/openclaw/models",
+      responses: { 200: z.array(OcModelSchema) },
     },
   }),
 

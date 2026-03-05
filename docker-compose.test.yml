@@ -10,14 +10,30 @@ services:
       timeout: 5s
       retries: 20
 
+  openclaw-init:
+    restart: "no"
+
+  openclaw:
+    container_name: "${COMPOSE_PROJECT_NAME}-openclaw-1"
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qS -O /dev/null http://127.0.0.1:18789/healthz 2>&1 | grep -q '200 OK' || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
   api-server:
     ports:
       - "0:3001"
     restart: "no"
     environment:
       ADMIN_PASSWORD: "testpassword"
+      OPENCLAW_CONTAINER_NAME: "${COMPOSE_PROJECT_NAME}-openclaw-1"
     depends_on:
       postgres:
+        condition: service_healthy
+      openclaw:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/agents > /dev/null 2>&1 || exit 1"]

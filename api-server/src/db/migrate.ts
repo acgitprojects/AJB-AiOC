@@ -58,6 +58,15 @@ CREATE TABLE IF NOT EXISTS user_passwords (
   user_id       TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   password_hash TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS openclaw_agent_config (
+  agent_id TEXT PRIMARY KEY,
+  model    TEXT NOT NULL DEFAULT '',
+  tools    TEXT[] DEFAULT '{}'
+);
+
+-- Drop FK so tasks can reference agent IDs that no longer live in Postgres
+ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_created_by_agent_fkey;
 `;
 
 export async function migrate(): Promise<void> {

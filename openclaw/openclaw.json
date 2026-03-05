@@ -1,0 +1,19 @@
+{
+  gateway: {
+    auth: {
+      token: "devtoken",
+    },
+    bind: "lan",
+    controlUi: {
+      allowedOrigins: [
+        "http://localhost:18789",
+        "http://127.0.0.1:18789",
+      ],
+    },
+  },
+  env: {
+    // Add AI provider and channel secret references here, e.g.:
+    // OPENROUTER_API_KEY: "$OPENROUTER_API_KEY",
+    // TELEGRAM_BOT_TOKEN: "$TELEGRAM_BOT_TOKEN",
+  },
+}

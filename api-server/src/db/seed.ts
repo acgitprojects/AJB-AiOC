@@ -1,142 +1,8 @@
 import { sql } from "./client";
-import * as agentRepo from "../repositories/agent.repository";
 import * as taskRepo from "../repositories/task.repository";
 import { insertUserWithPassword } from "../repositories/user.repository";
 import { hashPassword } from "../services/password";
-import type { Agent, MyTask } from "@ajb/contract";
-
-const AGENTS: Agent[] = [
-  {
-    id: "jary",
-    name: "Jary",
-    role: "Executive Assistant",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["scheduling", "comms", "delegation", "telegram"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: ["aria", "alex", "maya", "jordan", "morgan", "riley", "casey", "drew", "sophia"],
-    reportsTo: null,
-  },
-  {
-    id: "aria",
-    name: "ARIA",
-    role: "Strategic Intelligence",
-    model: "Claude Sonnet",
-    status: "offline",
-    skills: ["market research", "competitive analysis", "planning"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "alex",
-    name: "Alex",
-    role: "Sales & BD",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["CRM", "pipeline", "proposals", "Zoho CRM"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "maya",
-    name: "Maya",
-    role: "Marketing & Content",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["copywriting", "social media", "campaigns", "AJC growth"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "jordan",
-    name: "Jordan",
-    role: "Operations & Projects",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["Notion", "project tracking", "SOPs", "reporting"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "morgan",
-    name: "Morgan",
-    role: "Finance & Compliance",
-    model: "o3-mini",
-    status: "offline",
-    skills: ["Zoho Books", "invoicing", "cashflow", "tax"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "riley",
-    name: "Riley",
-    role: "Customer Success",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["helpdesk", "onboarding", "renewals", "NPS"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "casey",
-    name: "Casey",
-    role: "Engineering & DevOps",
-    model: "o3-mini",
-    status: "offline",
-    skills: ["infra", "CI/CD", "BuildOS", "cloud"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "drew",
-    name: "Drew",
-    role: "Research & Data",
-    model: "Claude Sonnet",
-    status: "offline",
-    skills: ["data analysis", "reporting", "benchmarking"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-  {
-    id: "sophia",
-    name: "Sophia",
-    role: "HR & Culture",
-    model: "GPT-4o",
-    status: "offline",
-    skills: ["hiring", "onboarding", "culture", "docs"],
-    tasksCompleted: 0,
-    responseRate: 0,
-    avgResponseMs: 0,
-    reports: [],
-    reportsTo: "jary",
-  },
-];
+import type { MyTask } from "@ajb/contract";
 
 const TASKS: MyTask[] = [
   {
@@ -286,12 +152,11 @@ const TASKS: MyTask[] = [
 ];
 
 export async function seedIfEmpty(): Promise<void> {
-  const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text as count FROM agents`;
+  const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text as count FROM tasks`;
   if (Number(count) > 0) return;
 
   console.log("Seeding database with initial data...");
 
-  await agentRepo.insertMany(AGENTS);
   await taskRepo.insertMany(TASKS);
 
   const adminPassword = process.env.ADMIN_PASSWORD ?? "changeme";
@@ -312,8 +177,7 @@ export async function seedIfEmpty(): Promise<void> {
 
 /** Wipe all data and re-seed from scratch. Used by the test reset endpoint. */
 export async function resetAndReseed(): Promise<void> {
-  await sql`TRUNCATE task_delegations, tasks, user_passwords, users, agents RESTART IDENTITY CASCADE`;
-  await agentRepo.insertMany(AGENTS);
+  await sql`TRUNCATE task_delegations, tasks, user_passwords, users RESTART IDENTITY CASCADE`;
   await taskRepo.insertMany(TASKS);
 
   const adminPassword = process.env.ADMIN_PASSWORD ?? "changeme";
